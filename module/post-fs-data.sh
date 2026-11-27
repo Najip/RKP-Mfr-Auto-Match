@@ -446,10 +446,14 @@ printf '%s\n' "$MFR" > "$MFR_FILE"
 chmod 0644 "$MFR_FILE" 2>/dev/null
 
 # Keep global ro.product.manufacturer stock so camera apps don't crash.
-# Only set manufacturer_for_attestation globally if resetprop is available.
+# Set manufacturer_for_attestation (and optional vendor manufacturer if enabled) via resetprop.
 if [ -n "$RP" ]; then
   CUR_A=$(getprop ro.product.manufacturer_for_attestation)
   [ "$CUR_A" != "$MFR" ] && "$RP" -n ro.product.manufacturer_for_attestation "$MFR"
+  if [ "$SPOOF_VENDOR_MFR" = "1" ]; then
+    CUR_V=$(getprop ro.product.vendor.manufacturer)
+    [ "$CUR_V" != "$MFR" ] && "$RP" -n ro.product.vendor.manufacturer "$MFR"
+  fi
 fi
 
 update_module_desc
