@@ -733,6 +733,18 @@
             <span class="slider"></span>
           </label>
         </div>
+        <div class="setting-row" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
+          <div>
+            <div class="setting-title">Keep global ro.product.manufacturer stock</div>
+            <div class="setting-desc">
+              Off by default. Turn this on if a DenyList/Unmount banking or UPI app (like MobiKwik) breaks when global <code>ro.product.manufacturer</code> is modified. Keeps global manufacturer stock and uses stealth Zygisk spoofing on non-whitelisted apps instead (requires reboot).
+            </div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="stockGlobalToggle" />
+            <span class="slider"></span>
+          </label>
+        </div>
       </div>
 
       <div class="card">
@@ -995,6 +1007,7 @@
       const curVendor = data.CUR_VENDOR_MFR || "(empty)";
       const curAttest = data.CUR_ATTEST_MFR || "(empty)";
       const spoofVendor = data.SPOOF_VENDOR_MFR === "1";
+      const stockGlobal = data.STOCK_GLOBAL_MFR === "1";
       const debugLog = data.DEBUG_LOG === "1";
       const zygiskBackend = data.ZYGISK_BACKEND || "";
       const pendingReboot = data.PENDING_REBOOT === "1";
@@ -1014,6 +1027,7 @@
       document.getElementById("propAttestMfr").textContent = curAttest;
       document.getElementById("bootLog").textContent = data.LAST_LOG || "No log yet.";
       document.getElementById("vendorToggle").checked = spoofVendor;
+      document.getElementById("stockGlobalToggle").checked = stockGlobal;
       document.getElementById("debugLogToggle").checked = debugLog;
       loadDebugLog();
 
@@ -1163,8 +1177,9 @@
 
     async function writeConfig(markReboot) {
       const spoofVendor = document.getElementById("vendorToggle").checked ? "1" : "0";
+      const stockGlobal = document.getElementById("stockGlobalToggle").checked ? "1" : "0";
       const debugLog = document.getElementById("debugLogToggle").checked ? "1" : "0";
-      let cmd = `printf 'SPOOF_VENDOR_MFR=%s\\nDEBUG_LOG=%s\\n' '${spoofVendor}' '${debugLog}' > "${CONF_PATH}" && chmod 0644 "${CONF_PATH}" 2>/dev/null`;
+      let cmd = `printf 'SPOOF_VENDOR_MFR=%s\\nSTOCK_GLOBAL_MFR=%s\\nDEBUG_LOG=%s\\n' '${spoofVendor}' '${stockGlobal}' '${debugLog}' > "${CONF_PATH}" && chmod 0644 "${CONF_PATH}" 2>/dev/null`;
       if (markReboot) {
         cmd += ` && ${runScriptCmd("--mark-reboot")}`;
       }
@@ -1189,6 +1204,19 @@
 
     // Vendor manufacturer toggle (requires reboot)
     document.getElementById("vendorToggle").addEventListener("change", async (e) => {
+      const res = await writeConfig(true);
+      if (res.errno === 0) {
+        document.getElementById("rebootBanner").classList.add("show");
+        showToast("Saved. Waiting for reboot to take effect.");
+        loadStatus();
+      } else {
+        e.target.checked = !e.target.checked;
+        showToast("Failed to save setting.");
+      }
+    });
+
+    // Stock global manufacturer toggle (requires reboot)
+    document.getElementById("stockGlobalToggle").addEventListener("change", async (e) => {
       const res = await writeConfig(true);
       if (res.errno === 0) {
         document.getElementById("rebootBanner").classList.add("show");

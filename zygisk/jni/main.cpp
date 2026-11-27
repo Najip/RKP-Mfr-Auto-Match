@@ -14,6 +14,7 @@
 
 namespace {
 
+constexpr const char *kMfrPath = "/data/adb/rkp_mfr_auto.mfr";
 constexpr const char *kRealMfrPath = "/data/adb/rkp_mfr_auto.real_mfr";
 constexpr const char *kConfPath = "/data/adb/rkp_mfr_auto.conf";
 constexpr const char *kExcludePath = "/data/adb/rkp_mfr_auto.exclude";
@@ -32,14 +33,24 @@ constexpr const char *kDefaultExcluded[] = {
     "com.xiaomi.camera",
 };
 
-struct CompanionReply {
-    uint8_t should_restore;
-    uint8_t restore_vendor;
-    char real_mfr[PROP_VALUE_MAX];
+// Action returned by companion:
+// 0 = do nothing (dlclose immediately)
+// 1 = stealth Java Build.MANUFACTURER set + dlclose (zero maps left behind)
+// 2 = full native PLT hook + Java Build.MANUFACTURER set (for fixed camera apps only)
+enum Action : uint8_t {
+    ACTION_NONE = 0,
+    ACTION_STEALTH_JAVA = 1,
+    ACTION_FULL_CAMERA = 2,
 };
 
-static char g_real_mfr[PROP_VALUE_MAX] = {0};
-static bool g_restore_vendor = false;
+struct CompanionReply {
+    uint8_t action;
+    uint8_t hook_vendor;
+    char target_mfr[PROP_VALUE_MAX];
+};
+
+static char g_target_mfr[PROP_VALUE_MAX] = {0};
+static bool g_hook_vendor = false;
 
 using prop_callback_t = void (*)(void *, const char *, const char *, uint32_t);
 using prop_read_cb_t = void (*)(const prop_info *, prop_callback_t, void *);
@@ -52,7 +63,7 @@ static bool is_target_prop(const char *name) {
     if (!name) return false;
     if (strcmp(name, "ro.product.manufacturer") == 0) return true;
     if (strcmp(name, "ro.product.manufacturer_for_attestation") == 0) return true;
-    if (g_restore_vendor && strcmp(name, "ro.product.vendor.manufacturer") == 0) return true;
+    if (g_hook_vendor && strcmp(name, "ro.product.vendor.manufacturer") == 0) return true;
     return false;
 }
 
@@ -63,8 +74,8 @@ struct CallbackWrap {
 
 static void wrapped_prop_callback(void *cookie, const char *name, const char *value, uint32_t serial) {
     auto *w = static_cast<CallbackWrap *>(cookie);
-    if (g_real_mfr[0] != '\0' && is_target_prop(name)) {
-        w->orig_cb(w->orig_cookie, name, g_real_mfr, serial);
+    if (g_target_mfr[0] != '\0' && is_target_prop(name)) {
+        w->orig_cb(w->orig_cookie, name, g_target_mfr, serial);
     } else {
         w->orig_cb(w->orig_cookie, name, value, serial);
     }
@@ -72,7 +83,7 @@ static void wrapped_prop_callback(void *cookie, const char *name, const char *va
 
 static void hooked_read_callback(const prop_info *pi, prop_callback_t callback, void *cookie) {
     if (!orig_read_callback) return;
-    if (g_real_mfr[0] != '\0' && callback) {
+    if (g_target_mfr[0] != '\0' && callback) {
         CallbackWrap w{callback, cookie};
         orig_read_callback(pi, wrapped_prop_callback, &w);
         return;
@@ -81,10 +92,10 @@ static void hooked_read_callback(const prop_info *pi, prop_callback_t callback, 
 }
 
 static int hooked_prop_get(const char *name, char *value) {
-    if (g_real_mfr[0] != '\0' && value && is_target_prop(name)) {
-        size_t len = strlen(g_real_mfr);
+    if (g_target_mfr[0] != '\0' && value && is_target_prop(name)) {
+        size_t len = strlen(g_target_mfr);
         if (len >= PROP_VALUE_MAX) len = PROP_VALUE_MAX - 1;
-        memcpy(value, g_real_mfr, len);
+        memcpy(value, g_target_mfr, len);
         value[len] = '\0';
         return static_cast<int>(len);
     }
@@ -147,19 +158,32 @@ static bool file_has_package(const char *path, const char *proc_name) {
     return false;
 }
 
-static bool is_whitelisted_package(const char *proc_name) {
+static bool is_camera_package(const char *proc_name) {
     if (!proc_name || proc_name[0] == '\0') return false;
-
     for (const char *pat : kDefaultExcluded) {
         if (pkg_matches(proc_name, pat)) return true;
     }
-
-    if (file_has_package(kCamAutoPath, proc_name)) return true;
-    if (file_has_package(kExcludePath, proc_name)) return true;
-    return false;
+    return file_has_package(kCamAutoPath, proc_name);
 }
 
-static void append_debug_log(const char *proc_name, const CompanionReply &reply, bool whitelisted) {
+static bool is_user_whitelisted(const char *proc_name) {
+    if (!proc_name || proc_name[0] == '\0') return false;
+    return file_has_package(kExcludePath, proc_name);
+}
+
+static bool read_single_line(const char *path, char *out, size_t out_sz) {
+    FILE *fp = fopen(path, "r");
+    if (!fp) return false;
+    bool ok = false;
+    if (fgets(out, static_cast<int>(out_sz), fp)) {
+        trim_line(out);
+        ok = (out[0] != '\0');
+    }
+    fclose(fp);
+    return ok;
+}
+
+static void append_debug_log(const char *proc_name, const CompanionReply &reply, bool stock_global, bool is_cam, bool is_wl) {
     struct stat st{};
     const char *mode = "a";
     if (stat(kDebugLogPath, &st) == 0 && st.st_size > kMaxLogBytes) {
@@ -172,14 +196,13 @@ static void append_debug_log(const char *proc_name, const CompanionReply &reply,
     localtime_r(&now, &tm_buf);
     char ts[32] = {0};
     strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", &tm_buf);
-    if (reply.should_restore) {
-        fprintf(lf, "[%s] [zygisk] %s -> RESTORE real_mfr=%s vendor=%u\n",
-                ts, proc_name, reply.real_mfr, static_cast<unsigned>(reply.restore_vendor));
-    } else if (whitelisted) {
-        fprintf(lf, "[%s] [zygisk] %s -> WHITELISTED_NO_REAL_MFR (dlclose)\n", ts, proc_name);
-    } else {
-        fprintf(lf, "[%s] [zygisk] %s -> DLCLOSE\n", ts, proc_name);
-    }
+    const char *act_str = "DLCLOSE";
+    if (reply.action == ACTION_FULL_CAMERA) act_str = "FULL_CAM_RESTORE";
+    else if (reply.action == ACTION_STEALTH_JAVA) act_str = stock_global ? "STEALTH_SPOOF+DLCLOSE" : "STEALTH_RESTORE+DLCLOSE";
+    fprintf(lf, "[%s] [zygisk] %s -> %s mfr=%s (stock_global=%d cam=%d wl=%d)\n",
+            ts, proc_name, act_str,
+            reply.target_mfr[0] ? reply.target_mfr : "-",
+            stock_global ? 1 : 0, is_cam ? 1 : 0, is_wl ? 1 : 0);
     fclose(lf);
     chmod(kDebugLogPath, 0644);
 }
@@ -200,35 +223,49 @@ static void companion_handler(int fd) {
 
     bool spoof_vendor = false;
     bool debug_log = false;
+    bool stock_global = false;
     if (FILE *cf = fopen(kConfPath, "r")) {
         char line[128];
         while (fgets(line, sizeof(line), cf)) {
             trim_line(line);
             if (strcmp(line, "SPOOF_VENDOR_MFR=1") == 0) spoof_vendor = true;
             else if (strcmp(line, "DEBUG_LOG=1") == 0) debug_log = true;
+            else if (strcmp(line, "STOCK_GLOBAL_MFR=1") == 0) stock_global = true;
         }
         fclose(cf);
     }
 
-    bool whitelisted = is_whitelisted_package(proc_name);
+    bool is_cam = is_camera_package(proc_name);
+    bool is_wl = is_user_whitelisted(proc_name);
 
-    // Only activate for whitelisted / fixed camera apps so normal apps (including detectors)
-    // immediately dlclose this library and leave zero Zygisk maps behind.
-    if (whitelisted) {
-        if (FILE *mf = fopen(kRealMfrPath, "r")) {
-            if (fgets(reply.real_mfr, sizeof(reply.real_mfr), mf)) {
-                trim_line(reply.real_mfr);
-                if (reply.real_mfr[0] != '\0') {
-                    reply.should_restore = 1;
-                    reply.restore_vendor = spoof_vendor ? 1 : 0;
-                }
+    if (stock_global) {
+        // Stock global mode: ro.product.manufacturer stays stock globally so DenyList/banking
+        // apps and cameras stay untouched. For non-whitelisted apps, stealth-spoof Java Build
+        // fields and immediately dlclose (zero maps).
+        if (!is_cam && !is_wl) {
+            if (read_single_line(kMfrPath, reply.target_mfr, sizeof(reply.target_mfr))) {
+                reply.action = ACTION_STEALTH_JAVA;
             }
-            fclose(mf);
+        }
+    } else {
+        // Default mode: ro.product.manufacturer is set globally to RKP mfr so detectors pass
+        // with zero Zygisk maps.
+        // - Fixed camera apps get full native+Java restore to real_mfr.
+        // - User-whitelisted apps get stealth Java restore + immediate dlclose (zero maps).
+        if (is_cam) {
+            if (read_single_line(kRealMfrPath, reply.target_mfr, sizeof(reply.target_mfr))) {
+                reply.action = ACTION_FULL_CAMERA;
+                reply.hook_vendor = spoof_vendor ? 1 : 0;
+            }
+        } else if (is_wl) {
+            if (read_single_line(kRealMfrPath, reply.target_mfr, sizeof(reply.target_mfr))) {
+                reply.action = ACTION_STEALTH_JAVA;
+            }
         }
     }
 
     if (debug_log) {
-        append_debug_log(proc_name, reply, whitelisted);
+        append_debug_log(proc_name, reply, stock_global, is_cam, is_wl);
     }
 
     write_exact(fd, &reply, sizeof(reply));
@@ -315,19 +352,24 @@ public:
                   read_exact(fd, &reply, sizeof(reply));
         close(fd);
 
-        if (!ok || !reply.should_restore || reply.real_mfr[0] == '\0') {
-            // Normal apps (including detectors): unload immediately so neither this .so
-            // nor libzygisk.so stays in /proc/self/maps.
+        if (!ok || reply.action == ACTION_NONE || reply.target_mfr[0] == '\0') {
             api_->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
             return;
         }
 
-        // Whitelisted / fixed camera app: restore stock manufacturer via PLT hooks + Build fields
-        strncpy(g_real_mfr, reply.real_mfr, sizeof(g_real_mfr) - 1);
-        g_real_mfr[sizeof(g_real_mfr) - 1] = '\0';
-        g_restore_vendor = (reply.restore_vendor != 0);
-        should_restore_ = true;
+        strncpy(g_target_mfr, reply.target_mfr, sizeof(g_target_mfr) - 1);
+        g_target_mfr[sizeof(g_target_mfr) - 1] = '\0';
+        g_hook_vendor = (reply.hook_vendor != 0);
+        action_ = reply.action;
 
+        if (action_ == ACTION_STEALTH_JAVA) {
+            // Unload immediately after postAppSpecialize sets Java Build fields
+            // so neither this .so nor libzygisk.so stays in /proc/self/maps.
+            api_->setOption(zygisk::Option::DLCLOSE_MODULE_LIBRARY);
+            return;
+        }
+
+        // ACTION_FULL_CAMERA: restore stock manufacturer natively + in Java for camera apps
         dev_t dev = 0;
         ino_t ino = 0;
         if (find_lib_dev_inode("/libandroid_runtime.so", &dev, &ino)) {
@@ -346,7 +388,7 @@ public:
     }
 
     void postAppSpecialize(const zygisk::AppSpecializeArgs *) override {
-        if (!should_restore_ || g_real_mfr[0] == '\0') return;
+        if (action_ == ACTION_NONE || g_target_mfr[0] == '\0') return;
 
         jclass build_cls = env_->FindClass("android/os/Build");
         if (env_->ExceptionCheck() || !build_cls) {
@@ -354,15 +396,15 @@ public:
             return;
         }
 
-        set_build_field(env_, build_cls, "MANUFACTURER", g_real_mfr);
-        set_build_field(env_, build_cls, "MANUFACTURER_FOR_ATTESTATION", g_real_mfr);
+        set_build_field(env_, build_cls, "MANUFACTURER", g_target_mfr);
+        set_build_field(env_, build_cls, "MANUFACTURER_FOR_ATTESTATION", g_target_mfr);
         env_->DeleteLocalRef(build_cls);
     }
 
 private:
     zygisk::Api *api_ = nullptr;
     JNIEnv *env_ = nullptr;
-    bool should_restore_ = false;
+    uint8_t action_ = ACTION_NONE;
 };
 
 } // namespace

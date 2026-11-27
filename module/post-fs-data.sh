@@ -68,13 +68,15 @@ detect_zygisk_backend() {
 
 ZYGISK_BACKEND=$(detect_zygisk_backend)
 
-# Default settings (vendor prop and debug logging off by default)
+# Default settings (vendor prop, stock global mode, and debug logging off by default)
 SPOOF_VENDOR_MFR=0
+STOCK_GLOBAL_MFR=0
 DEBUG_LOG=0
 if [ -f "$CONF" ]; then
   . "$CONF"
 fi
 [ "$SPOOF_VENDOR_MFR" = "1" ] || SPOOF_VENDOR_MFR=0
+[ "$STOCK_GLOBAL_MFR" = "1" ] || STOCK_GLOBAL_MFR=0
 [ "$DEBUG_LOG" = "1" ] || DEBUG_LOG=0
 
 dlog() {
@@ -522,6 +524,7 @@ if [ "$1" = "--export-log" ]; then
     echo "CUR_VENDOR_MFR=$(getprop ro.product.vendor.manufacturer 2>/dev/null)"
     echo "CUR_ATTEST_MFR=$(getprop ro.product.manufacturer_for_attestation 2>/dev/null)"
     echo "SPOOF_VENDOR_MFR=$SPOOF_VENDOR_MFR"
+    echo "STOCK_GLOBAL_MFR=$STOCK_GLOBAL_MFR"
     echo "DEBUG_LOG=$DEBUG_LOG"
     echo "RESETPROP=${RP:-none}"
     echo "LAST_LOG=$(head -n 1 "$LOG" 2>/dev/null)"
@@ -660,6 +663,7 @@ if [ "$1" = "--status" ]; then
   echo "CUR_VENDOR_MFR=$(getprop ro.product.vendor.manufacturer 2>/dev/null)"
   echo "CUR_ATTEST_MFR=$(getprop ro.product.manufacturer_for_attestation 2>/dev/null)"
   echo "SPOOF_VENDOR_MFR=$SPOOF_VENDOR_MFR"
+  echo "STOCK_GLOBAL_MFR=$STOCK_GLOBAL_MFR"
   echo "DEBUG_LOG=$DEBUG_LOG"
   echo "ZYGISK_BACKEND=$ZYGISK_BACKEND"
   echo "PENDING_REBOOT=$PENDING_REBOOT"
@@ -744,10 +748,15 @@ fi
 printf '%s\n' "$MFR" > "$MFR_FILE"
 chmod 0644 "$MFR_FILE" 2>/dev/null
 
-# Apply RKP manufacturer natively via resetprop so detectors pass with zero Zygisk maps.
-# Zygisk only stays loaded for whitelisted/camera apps to restore REAL_MFR.
+# Apply RKP manufacturer via resetprop:
+# - Default (STOCK_GLOBAL_MFR=0): set ro.product.manufacturer globally so detectors pass
+#   with zero Zygisk maps; Zygisk restores real_mfr for cameras & whitelisted apps.
+# - Stock global mode (STOCK_GLOBAL_MFR=1): keep ro.product.manufacturer stock so DenyList
+#   banking/UPI apps stay completely untouched; only set manufacturer_for_attestation globally.
 if [ -n "$RP" ]; then
-  [ "$CUR_M" != "$MFR" ] && "$RP" -n ro.product.manufacturer "$MFR"
+  if [ "$STOCK_GLOBAL_MFR" = "0" ]; then
+    [ "$CUR_M" != "$MFR" ] && "$RP" -n ro.product.manufacturer "$MFR"
+  fi
   CUR_A=$(getprop ro.product.manufacturer_for_attestation 2>/dev/null)
   [ "$CUR_A" != "$MFR" ] && "$RP" -n ro.product.manufacturer_for_attestation "$MFR"
   if [ "$SPOOF_VENDOR_MFR" = "1" ]; then
@@ -758,7 +767,7 @@ fi
 
 update_module_desc
 
-dlog "apply mode=${1:-boot} zygisk=${ZYGISK_BACKEND:-missing} kb=$KB mfr=$MFR real_mfr=${REAL_MFR:-none} rp=${RP:-none} vendor=$SPOOF_VENDOR_MFR"
+dlog "apply mode=${1:-boot} zygisk=${ZYGISK_BACKEND:-missing} kb=$KB mfr=$MFR real_mfr=${REAL_MFR:-none} rp=${RP:-none} vendor=$SPOOF_VENDOR_MFR stock_global=$STOCK_GLOBAL_MFR"
 
 if [ "$1" = "--hot-apply" ]; then
   scan_camera_apps
