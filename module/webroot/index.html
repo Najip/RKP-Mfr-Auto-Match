@@ -120,6 +120,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 8px;
       padding: 8px 2px 16px;
     }
 
@@ -136,6 +137,11 @@
       margin-top: 2px;
     }
 
+    .header-actions {
+      display: flex;
+      gap: 8px;
+    }
+
     .icon-btn {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -148,6 +154,12 @@
       align-items: center;
       gap: 6px;
       cursor: pointer;
+    }
+
+    .icon-btn.primary {
+      background: var(--accent-soft);
+      border-color: transparent;
+      color: var(--accent);
     }
 
     .icon-btn:active {
@@ -264,6 +276,63 @@
     .pill.ok { background: var(--ok-soft); color: var(--ok); }
     .pill.warn { background: var(--warn-soft); color: var(--warn); }
     .pill.info { background: var(--info-soft); color: var(--text-muted); }
+
+    .app-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .app-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      background: var(--surface-alt);
+      border-radius: 10px;
+      padding: 9px 12px;
+    }
+
+    .app-name {
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .app-pkg {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      word-break: break-all;
+    }
+
+    .suggest-box {
+      margin-top: 10px;
+      padding: 11px 12px;
+      border-radius: 12px;
+      background: var(--accent-soft);
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.45;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .suggest-box.caution {
+      background: var(--warn-soft);
+    }
+
+    .link-btn {
+      align-self: flex-start;
+      background: var(--accent);
+      color: #ffffff;
+      border: none;
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
 
     .log-box {
       background: var(--surface-alt);
@@ -461,13 +530,10 @@
         <h1>RKP Manufacturer</h1>
         <div class="subtitle">rkp_mfr_auto</div>
       </div>
-      <button class="icon-btn" id="refreshBtn" type="button">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-          <polyline points="21 3 21 9 15 9" />
-        </svg>
-        Refresh
-      </button>
+      <div class="header-actions">
+        <button class="icon-btn primary" id="hotApplyBtn" type="button">Hot Apply</button>
+        <button class="icon-btn" id="refreshBtn" type="button">Refresh</button>
+      </div>
     </header>
 
     <!-- HOME TAB -->
@@ -495,6 +561,11 @@
         </div>
       </div>
 
+      <div class="card" id="appsCard">
+        <div class="card-title">Detected Apps</div>
+        <div id="appsContent" class="setting-desc">Checking installed apps...</div>
+      </div>
+
       <div class="card">
         <div class="card-title">Current Props</div>
         <div class="kv-row">
@@ -512,7 +583,7 @@
       </div>
 
       <div class="card">
-        <div class="card-title">Last Boot Log</div>
+        <div class="card-title">Last Boot / Apply Log</div>
         <div class="log-box" id="bootLog">-</div>
       </div>
     </section>
@@ -525,11 +596,11 @@
           <div>
             <div class="setting-title">Spoof ro.product.vendor.manufacturer</div>
             <div class="setting-desc">
-              Also set <code>ro.product.vendor.manufacturer</code> in <code>post-fs-data.sh</code> to match your RKP keybox. Turning this off may fix crashes on apps that check it (like Pixel Camera or OEM camera apps).
+              Off by default so camera apps (like Pixel Camera or OEM cameras) are less likely to crash. Turn this on if detected apps still flag a vendor manufacturer mismatch.
             </div>
           </div>
           <label class="switch">
-            <input type="checkbox" id="vendorToggle" checked />
+            <input type="checkbox" id="vendorToggle" />
             <span class="slider"></span>
           </label>
         </div>
@@ -588,6 +659,10 @@
     let cbCounter = 0;
     let toastTimer = null;
 
+    function runScriptCmd(arg) {
+      return `if [ -x /data/adb/ksu/bin/busybox ]; then /data/adb/ksu/bin/busybox sh "${SCRIPT_PATH}" ${arg}; else sh "${SCRIPT_PATH}" ${arg}; fi`;
+    }
+
     function ksuExec(cmd) {
       return new Promise((resolve) => {
         if (typeof window.ksu === "undefined" || typeof window.ksu.exec !== "function") {
@@ -621,10 +696,15 @@
       el.textContent = msg;
       el.classList.add("show");
       clearTimeout(toastTimer);
-      toastTimer = setTimeout(() => el.classList.remove("show"), 2600);
+      toastTimer = setTimeout(() => el.classList.remove("show"), 2800);
     }
 
-    function applyTheme(theme) {
+    function switchTab(target) {
+      document.querySelectorAll(".nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === target));
+      document.querySelectorAll(".tab-panel").forEach((p) => p.classList.toggle("active", p.id === "tab-" + target));
+    }
+
+    function applyTheme(theme, notify) {
       const valid = ["system", "light", "dark", "amoled"];
       const chosen = valid.includes(theme) ? theme : "system";
       document.documentElement.setAttribute("data-theme", chosen);
@@ -632,6 +712,9 @@
       document.querySelectorAll(".theme-opt").forEach((btn) => {
         btn.classList.toggle("active", btn.dataset.themeChoice === chosen);
       });
+      if (notify) {
+        showToast("Theme updated. No reboot required.");
+      }
     }
 
     function setBanner(kind, title, desc) {
@@ -652,9 +735,71 @@
       return out;
     }
 
+    function parseAppList(raw) {
+      if (!raw) return [];
+      return raw.split(";").filter(Boolean).map((item) => {
+        const parts = item.split("|");
+        return { label: parts[0] || item, pkg: parts[1] || "" };
+      });
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      }[c]));
+    }
+
+    function renderApps(detectedApps, cameraApps, isRkp, rkpMfr, spoofVendor) {
+      const box = document.getElementById("appsContent");
+      let html = "";
+
+      if (detectedApps.length === 0 && cameraApps.length === 0) {
+        box.innerHTML = '<div class="setting-desc">No known detector or Pixel camera apps found.</div>';
+        return;
+      }
+
+      if (detectedApps.length > 0) {
+        html += '<div class="app-list">';
+        detectedApps.forEach((a) => {
+          html += `<div class="app-item"><div><div class="app-name">${escapeHtml(a.label)}</div><div class="app-pkg">${escapeHtml(a.pkg)}</div></div><span class="pill info">Detector</span></div>`;
+        });
+        html += '</div>';
+      }
+
+      if (cameraApps.length > 0) {
+        html += '<div class="app-list" style="margin-top:8px;">';
+        cameraApps.forEach((a) => {
+          html += `<div class="app-item"><div><div class="app-name">${escapeHtml(a.label)}</div><div class="app-pkg">${escapeHtml(a.pkg)}</div></div><span class="pill warn">Camera</span></div>`;
+        });
+        html += '</div>';
+      }
+
+      if (isRkp && rkpMfr && detectedApps.length > 0 && !spoofVendor) {
+        html += `
+          <div class="suggest-box">
+            <div>Some of these apps may check <code>ro.product.vendor.manufacturer</code>. If they still flag a mismatch, try turning it on in Settings.</div>
+            <button type="button" class="link-btn" id="goSettingsBtn">Open Settings</button>
+          </div>
+        `;
+      }
+
+      if (cameraApps.length > 0 && spoofVendor) {
+        html += `
+          <div class="suggest-box caution">
+            <div>Pixel Camera is installed and <code>ro.product.vendor.manufacturer</code> is currently ON. If the camera crashes, turn it off in Settings.</div>
+          </div>
+        `;
+      }
+
+      box.innerHTML = html;
+      const goBtn = document.getElementById("goSettingsBtn");
+      if (goBtn) {
+        goBtn.addEventListener("click", () => switchTab("settings"));
+      }
+    }
+
     async function loadStatus() {
-      const cmd = `if [ -x /data/adb/ksu/bin/busybox ]; then /data/adb/ksu/bin/busybox sh "${SCRIPT_PATH}" --status; else sh "${SCRIPT_PATH}" --status; fi`;
-      const res = await ksuExec(cmd);
+      const res = await ksuExec(runScriptCmd("--status"));
       if (res.errno !== 0 && !res.stdout) {
         setBanner("warn", "Could not read module status", res.stderr || "Open this WebUI from KernelSU / APatch Manager.");
         return;
@@ -667,17 +812,21 @@
       const curMfr = data.CUR_MFR || "(empty)";
       const curVendor = data.CUR_VENDOR_MFR || "(empty)";
       const curAttest = data.CUR_ATTEST_MFR || "(empty)";
-      const spoofVendor = data.SPOOF_VENDOR_MFR !== "0";
+      const spoofVendor = data.SPOOF_VENDOR_MFR === "1";
+      const detectedApps = parseAppList(data.DETECTED_APPS || "");
+      const cameraApps = parseAppList(data.CAMERA_APPS || "");
 
       document.getElementById("kbPath").textContent = kbPath || "Not found";
       document.getElementById("kbMfr").textContent = rkpMfr || "(none)";
       document.getElementById("propMfr").textContent = curMfr;
       document.getElementById("propVendorMfr").innerHTML = spoofVendor
-        ? curVendor
-        : `${curVendor} <span class="pill info">Skipped</span>`;
+        ? escapeHtml(curVendor)
+        : `${escapeHtml(curVendor)} <span class="pill info">Off</span>`;
       document.getElementById("propAttestMfr").textContent = curAttest;
-      document.getElementById("bootLog").textContent = data.LAST_LOG || "No boot log yet (reboot after installing).";
+      document.getElementById("bootLog").textContent = data.LAST_LOG || "No log yet.";
       document.getElementById("vendorToggle").checked = spoofVendor;
+
+      renderApps(detectedApps, cameraApps, isRkp, rkpMfr, spoofVendor);
 
       const kbTypeEl = document.getElementById("kbType");
       if (!kbPath) {
@@ -699,23 +848,19 @@
         );
       } else {
         kbTypeEl.innerHTML = '<span class="pill ok">RKP</span>';
-        const mfrMatched = curMfr === rkpMfr;
+        const mfrMatched = curMfr === rkpMfr && curAttest === rkpMfr;
         const vendorMatched = !spoofVendor || curVendor === rkpMfr;
         if (mfrMatched && vendorMatched) {
           setBanner("ok", `Matched (${rkpMfr})`, "Device manufacturer props match your active RKP keybox.");
         } else {
-          setBanner("warn", "Reboot needed", `RKP keybox manufacturer is "${rkpMfr}", but current props don't match yet. Reboot to apply.`);
+          setBanner("warn", "Not applied yet", `RKP keybox manufacturer is "${rkpMfr}". Tap Hot Apply for native props or reboot to apply everywhere.`);
         }
       }
     }
 
     // Tab switching
     document.querySelectorAll(".nav-btn").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const target = btn.dataset.tab;
-        document.querySelectorAll(".nav-btn").forEach((b) => b.classList.toggle("active", b === btn));
-        document.querySelectorAll(".tab-panel").forEach((p) => p.classList.toggle("active", p.id === "tab-" + target));
-      });
+      btn.addEventListener("click", () => switchTab(btn.dataset.tab));
     });
 
     // Vendor manufacturer toggle
@@ -731,11 +876,19 @@
       }
     });
 
-    // Theme picker
+    // Theme picker (no reboot required)
     document.getElementById("themeGrid").addEventListener("click", (e) => {
       const btn = e.target.closest(".theme-opt");
       if (!btn) return;
-      applyTheme(btn.dataset.themeChoice);
+      applyTheme(btn.dataset.themeChoice, true);
+    });
+
+    // Hot apply
+    document.getElementById("hotApplyBtn").addEventListener("click", async () => {
+      const res = await ksuExec(runScriptCmd("--hot-apply"));
+      const msg = (res.stdout || res.stderr || "").trim();
+      showToast(msg || (res.errno === 0 ? "Hot-applied." : "Hot-apply failed."));
+      loadStatus();
     });
 
     // Refresh
@@ -746,9 +899,9 @@
 
     // Init
     try {
-      applyTheme(localStorage.getItem(THEME_KEY) || "system");
+      applyTheme(localStorage.getItem(THEME_KEY) || "system", false);
     } catch (_) {
-      applyTheme("system");
+      applyTheme("system", false);
     }
     loadStatus();
   </script>

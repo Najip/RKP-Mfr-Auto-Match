@@ -3,12 +3,12 @@ MODDIR="${0%/*}"
 LOG="$MODDIR/last.log"
 CONF="/data/adb/rkp_mfr_auto.conf"
 
-# Default settings
-SPOOF_VENDOR_MFR=1
+# Default settings (off by default to avoid camera crashes)
+SPOOF_VENDOR_MFR=0
 if [ -f "$CONF" ]; then
   . "$CONF"
 fi
-[ "$SPOOF_VENDOR_MFR" = "0" ] || SPOOF_VENDOR_MFR=1
+[ "$SPOOF_VENDOR_MFR" = "1" ] || SPOOF_VENDOR_MFR=0
 
 RP=""
 for bin in /data/adb/ksu/bin/resetprop /data/adb/ap/bin/resetprop /data/adb/magisk/resetprop; do
@@ -204,6 +204,52 @@ if [ -n "$KB" ]; then
   esac
 fi
 
+detect_apps() {
+  PKGS=$(pm list packages 2>/dev/null | sed 's/^package://')
+  [ -z "$PKGS" ] && return
+
+  FOUND=""
+  for entry in \
+    "com.eltavine.duckdetector|Duck Detector" \
+    "io.github.vvb2060.keyattestation|Key Attestation" \
+    "icu.nullptr.nativetest|Native Detector" \
+    "com.reveny.nativecheck|Native Detector (Reveny)" \
+    "io.github.vvb2060.mahoshojo|Momo" \
+    "com.byxiaorun.detector|Ruru" \
+    "io.github.huskydg.memorydetector|Memory Detector" \
+    "com.zhenxi.hunter|Hunter"
+  do
+    pkg="${entry%%|*}"
+    label="${entry#*|}"
+    if printf '%s\n' "$PKGS" | grep -qx "$pkg"; then
+      if [ -n "$FOUND" ]; then
+        FOUND="${FOUND};${label}|${pkg}"
+      else
+        FOUND="${label}|${pkg}"
+      fi
+    fi
+  done
+
+  CAM=""
+  for entry in \
+    "com.google.android.GoogleCamera|Pixel Camera" \
+    "com.google.android.apps.camera.services|Pixel Camera Services"
+  do
+    pkg="${entry%%|*}"
+    label="${entry#*|}"
+    if printf '%s\n' "$PKGS" | grep -qx "$pkg"; then
+      if [ -n "$CAM" ]; then
+        CAM="${CAM};${label}|${pkg}"
+      else
+        CAM="${label}|${pkg}"
+      fi
+    fi
+  done
+
+  echo "DETECTED_APPS=$FOUND"
+  echo "CAMERA_APPS=$CAM"
+}
+
 if [ "$1" = "--status" ]; then
   echo "KEYBOX_PATH=$KB"
   echo "IS_RKP=$IS_RKP"
@@ -212,6 +258,7 @@ if [ "$1" = "--status" ]; then
   echo "CUR_VENDOR_MFR=$(getprop ro.product.vendor.manufacturer 2>/dev/null)"
   echo "CUR_ATTEST_MFR=$(getprop ro.product.manufacturer_for_attestation 2>/dev/null)"
   echo "SPOOF_VENDOR_MFR=$SPOOF_VENDOR_MFR"
+  detect_apps
   if [ -f "$LOG" ]; then
     echo "LAST_LOG=$(head -n 1 "$LOG")"
   else
@@ -230,28 +277,26 @@ fi
 
 if [ -z "$KB" ]; then
   echo "No keybox.xml found" > "$LOG"
+  [ "$1" = "--hot-apply" ] && echo "No keybox.xml found"
   exit 0
 fi
 
 if [ "$IS_RKP" -eq 0 ]; then
   echo "Not an RKP keybox ($KB), module not needed" > "$LOG"
+  [ "$1" = "--hot-apply" ] && echo "Not an RKP keybox, nothing applied"
   exit 0
 fi
 
 if [ -z "$MFR" ]; then
   echo "RKP keybox found but no map[3] manufacturer in $KB" > "$LOG"
+  [ "$1" = "--hot-apply" ] && echo "No map[3] manufacturer in keybox"
   exit 0
 fi
 
 if [ -z "$RP" ]; then
   echo "resetprop not found (detected $MFR from $KB)" > "$LOG"
+  [ "$1" = "--hot-apply" ] && echo "resetprop not found"
   exit 1
-fi
-
-CUR=$(getprop ro.product.manufacturer)
-if [ "$CUR" = "$MFR" ]; then
-  echo "Already matches ($MFR) from $KB" > "$LOG"
-  exit 0
 fi
 
 if [ "$SPOOF_VENDOR_MFR" = "1" ]; then
@@ -260,7 +305,28 @@ else
   PROPS="ro.product.manufacturer ro.product.manufacturer_for_attestation"
 fi
 
+CUR=$(getprop ro.product.manufacturer)
+CUR_V=$(getprop ro.product.vendor.manufacturer)
+CUR_A=$(getprop ro.product.manufacturer_for_attestation)
+
+NEED_APPLY=0
+[ "$CUR" != "$MFR" ] && NEED_APPLY=1
+[ "$CUR_A" != "$MFR" ] && NEED_APPLY=1
+[ "$SPOOF_VENDOR_MFR" = "1" ] && [ "$CUR_V" != "$MFR" ] && NEED_APPLY=1
+
+if [ "$NEED_APPLY" -eq 0 ]; then
+  echo "Already matches ($MFR) from $KB (vendor_prop=$SPOOF_VENDOR_MFR)" > "$LOG"
+  [ "$1" = "--hot-apply" ] && echo "Already matches ($MFR)"
+  exit 0
+fi
+
 for p in $PROPS; do
   "$RP" -n "$p" "$MFR"
 done
-echo "Applied RKP manufacturer=$MFR from $KB (was $CUR, vendor_prop=$SPOOF_VENDOR_MFR)" > "$LOG"
+
+if [ "$1" = "--hot-apply" ]; then
+  echo "Hot-applied RKP manufacturer=$MFR from $KB (was $CUR, vendor_prop=$SPOOF_VENDOR_MFR)" > "$LOG"
+  echo "Hot-applied $MFR (native props updated; reboot still needed for Java Build.*)"
+else
+  echo "Applied RKP manufacturer=$MFR from $KB (was $CUR, vendor_prop=$SPOOF_VENDOR_MFR)" > "$LOG"
+fi
