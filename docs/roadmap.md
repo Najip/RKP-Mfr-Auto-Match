@@ -18,9 +18,9 @@ Only set `ro.product.manufacturer_for_attestation` and leave `ro.product.manufac
 
 Read-only check on the Home tab. Shows if manufacturer props across system / vendor / odm / product agree with each other and with the fingerprint, so you can see what a detector would see. Changes nothing.
 
-## 3. Report issue button (easy)
+## 3. Report issue button (done)
 
-Button in Settings that collects the exported log and opens the GitHub bug report with version, device, root, Zygisk backend and toggles already filled in. No background network, nothing is sent unless you click it. Waiting for the KernelSU / KernelSU Next review before touching anything network related.
+Button in Settings that asks for confirmation, collects version, device, root manager, Zygisk backend, keystore setup and a short diagnostic log, and opens the GitHub bug report form with those fields pre-filled. No background network, nothing is sent unless you submit it on GitHub.
 
 ## 4. Keybox sync helper (medium)
 

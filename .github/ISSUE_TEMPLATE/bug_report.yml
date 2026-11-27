@@ -5,27 +5,27 @@ body:
   - type: markdown
     attributes:
       value: |
-        Fill the required fields or I can't help much. Turn on Debug log in Settings first, reproduce the problem, then export the log.
-        Only tested with OhMyKeymint (TEE engine and PIF engine).
+        Fill the required fields or I can't help much. Turn on Debug log in Settings first, reproduce the problem, then tap **Report Issue** in Settings (or export the log) to pre-fill this form.
+        Only tested with OhMyKeymint (TEE engine and PIF engine). Reports from other keystore setups are welcome.
   - type: input
     id: version
     attributes:
       label: Module version
-      description: Shown on the Home tab, e.g. v0.3.0
+      description: Shown on the Home tab, e.g. v0.4.0
     validations:
       required: true
   - type: input
     id: device
     attributes:
       label: Device and ROM
-      placeholder: Xiaomi 14T Pro, HyperOS 3
+      placeholder: Xiaomi 14T Pro, HyperOS 3, Android 15
     validations:
       required: true
   - type: input
     id: root
     attributes:
       label: Root manager and version
-      placeholder: KernelSU Next 1.x / APatch / Magisk
+      placeholder: KernelSU / KernelSU Next / FinaSU / SukiSU / APatch / Magisk
     validations:
       required: true
   - type: input
@@ -33,14 +33,14 @@ body:
     attributes:
       label: Zygisk backend
       description: What the Home tab indicator says
-      placeholder: ReZygisk, Zygisk Next, ...
+      placeholder: BreZygisk, ReZygisk, Zygisk Next, FolkZygisk (built-in), ...
     validations:
       required: true
   - type: input
     id: tee
     attributes:
-      label: TEE / PIF setup
-      placeholder: OhMyKeymint (TEE + PIF) vX.Y
+      label: Keystore / TEE / PIF setup
+      placeholder: OhMyKeymint (TEE + PIF), TrickyStore, TEESimulator, ...
     validations:
       required: true
   - type: textarea
@@ -59,8 +59,8 @@ body:
   - type: textarea
     id: log
     attributes:
-      label: Debug log
-      description: Paste it here or attach the exported file (rkp_mfr_auto_log_*.txt). Required.
+      label: Diagnostic / Debug log
+      description: Pre-filled by Report Issue in Settings, or paste / attach the exported file (rkp_mfr_auto_log_*.txt). Required.
       render: text
     validations:
       required: true
@@ -71,13 +71,13 @@ body:
       description: Only if one app is the problem
       placeholder: com.example.app
   - type: checkboxes
-    id: toggles
+    id: context
     attributes:
-      label: Settings that were on
+      label: Extra context
       options:
-        - label: Spoof vendor manufacturer
-        - label: Keep global manufacturer stock
-        - label: App in whitelist
+        - label: Debug log was enabled when reproducing
+        - label: Affected app is in the whitelist
+        - label: Possible conflicts shown on Home tab
   - type: input
     id: without
     attributes:

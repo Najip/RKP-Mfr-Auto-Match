@@ -922,6 +922,120 @@ if [ "$1" = "--export-log" ] || [ "$1" = "--export-log-public" ]; then
   exit 1
 fi
 
+if [ "$1" = "--issue-info" ]; then
+  MOD_VER=$(grep -E '^version=' "$MODPROP" 2>/dev/null | head -n 1 | cut -d= -f2-)
+  BRAND=$(getprop ro.product.brand 2>/dev/null)
+  MODEL=$(getprop ro.product.model 2>/dev/null)
+  DEV=$(getprop ro.product.device 2>/dev/null)
+  AREL=$(getprop ro.build.version.release 2>/dev/null)
+  ASDK=$(getprop ro.build.version.sdk 2>/dev/null)
+  ROM=""
+  for rp in ro.miui.ui.version.name ro.pixelos.version ro.lineage.version ro.crdroid.version ro.evolution.version ro.modversion ro.build.display.id; do
+    rv=$(getprop "$rp" 2>/dev/null)
+    if [ -n "$rv" ]; then
+      ROM="$rv"
+      break
+    fi
+  done
+  DEV_STR="$MODEL"
+  case "$MODEL" in
+    "$BRAND"*) ;;
+    *) [ -n "$BRAND" ] && DEV_STR="$BRAND $MODEL" ;;
+  esac
+  [ -n "$DEV" ] && DEV_STR="$DEV_STR ($DEV)"
+  [ -n "$ROM" ] && DEV_STR="$DEV_STR, $ROM"
+  [ -n "$AREL" ] && DEV_STR="$DEV_STR, Android $AREL${ASDK:+ (SDK $ASDK)}"
+
+  ROOT_STR="unknown"
+  if [ -x /data/adb/ksud ]; then
+    KV=$(/data/adb/ksud -V 2>/dev/null | head -n 1)
+    if [ -x /data/adb/ksu/bin/folkzygisk ] || [ -f /data/adb/ksu/zygisk.json ]; then
+      ROOT_STR="FinaSU${KV:+ ($KV)}"
+    elif [ -d /data/adb/ksu/yukizygisk ]; then
+      ROOT_STR="YukiSU${KV:+ ($KV)}"
+    elif /data/adb/ksud zygisk status >/dev/null 2>&1; then
+      ROOT_STR="SukiSU${KV:+ ($KV)}"
+    else
+      ROOT_STR="KernelSU${KV:+ ($KV)}"
+    fi
+  elif [ -x /data/adb/apd ]; then
+    AV=$(/data/adb/apd -V 2>/dev/null | head -n 1)
+    ROOT_STR="APatch${AV:+ ($AV)}"
+  elif command -v magisk >/dev/null 2>&1; then
+    MV=$(magisk -v 2>/dev/null | head -n 1)
+    ROOT_STR="Magisk${MV:+ ($MV)}"
+  fi
+
+  TEE_STR=""
+  if [ -n "$KS_MODULES" ]; then
+    TEE_STR=$(printf '%s\n' "$KS_MODULES" | tr ';' '\n' | while IFS='|' read -r kl ki ks; do
+      [ -n "$kl" ] || continue
+      printf '%s (%s), ' "$kl" "$ks"
+    done | sed 's/, $//')
+  fi
+  for pdir in /data/adb/modules/*; do
+    [ -d "$pdir" ] || continue
+    [ -f "$pdir/disable" ] && continue
+    [ -f "$pdir/remove" ] && continue
+    pid="${pdir##*/}"
+    case "$pid" in
+      *playintegrity*|*PlayIntegrity*|*pif*|*PIF*)
+        pname=$(grep -iE '^name=' "$pdir/module.prop" 2>/dev/null | head -n 1 | cut -d= -f2-)
+        [ -n "$pname" ] || pname="$pid"
+        case ", $TEE_STR," in
+          *", $pname"*) ;;
+          *) TEE_STR="${TEE_STR:+$TEE_STR + }$pname" ;;
+        esac
+        ;;
+    esac
+  done
+  [ -n "$TEE_STR" ] || TEE_STR="none detected"
+
+  echo "VERSION=${MOD_VER:-unknown}"
+  echo "DEVICE=$DEV_STR"
+  echo "ROOT=$ROOT_STR"
+  echo "ZYGISK=${ZYGISK_BACKEND:-none}"
+  echo "TEE=$TEE_STR"
+  echo "LOG_BEGIN"
+  echo "version=${MOD_VER:-unknown}"
+  echo "ZYGISK_BACKEND=${ZYGISK_BACKEND:-missing}"
+  echo "KEYSTORE_MODULE=${KB_OWNER:-${KS_PRIMARY:-none}}"
+  echo "KEYSTORE_MODULES=${KS_MODULES:-none}"
+  echo "KEYBOX_PATH=${KB:-none}"
+  echo "IS_RKP=$IS_RKP RKP_MFR=${MFR:-none} RKP_MFRS=${RKP_MFRS:-none}"
+  echo "WARNINGS=${WARNINGS:-none}"
+  echo "REAL_MFR=$(head -n 1 "$REAL_MFR_FILE" 2>/dev/null)"
+  echo "CUR_MFR=$(getprop ro.product.manufacturer 2>/dev/null)"
+  echo "CUR_VENDOR_MFR=$(getprop ro.product.vendor.manufacturer 2>/dev/null)"
+  echo "CUR_ATTEST_MFR=$(getprop ro.product.manufacturer_for_attestation 2>/dev/null)"
+  echo "DEBUG_LOG=$DEBUG_LOG RESETPROP=${RP:-none}"
+  echo "LAST_LOG=$(head -n 1 "$LOG" 2>/dev/null)"
+  CF=$(scan_conflicts)
+  if [ -n "$CF" ]; then
+    echo "--- Possible Conflicts ---"
+    printf '%s\n' "$CF"
+  fi
+  if [ "$IS_RKP" = "1" ] && [ -n "$MFR" ] && [ -n "$RP" ]; then
+    for cp in ro.product.manufacturer ro.product.manufacturer_for_attestation; do
+      cv=$(getprop "$cp" 2>/dev/null)
+      [ "$cv" != "$MFR" ] && echo "MISMATCH: $cp='$cv' expected='$MFR'"
+    done
+  fi
+  if [ -s "$CAM_AUTO_FILE" ]; then
+    echo "--- Auto Cameras ---"
+    cat "$CAM_AUTO_FILE"
+  fi
+  if [ -s "$EXCLUDE_FILE" ]; then
+    echo "--- Custom Whitelist ---"
+    cat "$EXCLUDE_FILE"
+  fi
+  if [ -s "$DEBUG_LOG_FILE" ]; then
+    echo "--- Debug Log (tail) ---"
+    tail -n 35 "$DEBUG_LOG_FILE" 2>/dev/null
+  fi
+  exit 0
+fi
+
 if [ "$1" = "--list-apps" ]; then
   SHOW_ALL=0
   [ "$2" = "all" ] && SHOW_ALL=1

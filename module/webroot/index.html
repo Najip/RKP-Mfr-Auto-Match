@@ -759,6 +759,7 @@
             <button type="button" class="btn-chip primary" id="captureLogBtn" data-i18n="btn.capture">Capture Snapshot</button>
             <button type="button" class="btn-chip primary" id="exportLogBtn" data-i18n="btn.export">Export Log</button>
             <button type="button" class="btn-chip" id="exportPublicBtn" data-i18n="btn.exportPublic">Save to Download</button>
+            <button type="button" class="btn-chip primary" id="reportIssueBtn" data-i18n="btn.reportIssue">Report Issue</button>
             <button type="button" class="btn-chip" id="refreshLogBtn" data-i18n="btn.refreshLog">Refresh</button>
             <button type="button" class="btn-chip" id="copyLogBtn" data-i18n="btn.copy">Copy</button>
             <button type="button" class="btn-chip" id="clearLogBtn" data-i18n="btn.clear">Clear</button>
@@ -768,6 +769,13 @@
             <div style="display:flex;gap:8px;">
               <button type="button" class="link-btn" id="exportConfirmBtn" data-i18n="btn.saveAnyway">Save anyway</button>
               <button type="button" class="btn-chip" id="exportCancelBtn" data-i18n="btn.cancel">Cancel</button>
+            </div>
+          </div>
+          <div id="reportConfirm" class="suggest-box caution" style="display:none;margin:0 0 10px;">
+            <div data-i18n="report.warn">Opens the GitHub bug report form in your browser with module version, device, root manager, Zygisk backend, keystore setup and a short diagnostic log pre-filled. Nothing is submitted until you post it on GitHub.</div>
+            <div style="display:flex;gap:8px;">
+              <button type="button" class="link-btn" id="reportConfirmBtn" data-i18n="btn.openGithub">Open GitHub</button>
+              <button type="button" class="btn-chip" id="reportCancelBtn" data-i18n="btn.cancel">Cancel</button>
             </div>
           </div>
           <div class="log-box" id="debugLogBox" style="max-height:220px;overflow-y:auto;white-space:pre-wrap;" data-i18n="log.empty">Debug log is empty.</div>
@@ -885,9 +893,12 @@
       "btn.capture": "Capture Snapshot",
       "btn.export": "Export Log",
       "btn.exportPublic": "Save to Download",
+      "btn.reportIssue": "Report Issue",
+      "btn.openGithub": "Open GitHub",
       "btn.saveAnyway": "Save anyway",
       "btn.cancel": "Cancel",
       "export.warn": "The export contains device props, installed module names, package names and the debug log. Files in Download can be read by other apps with storage access.",
+      "report.warn": "Opens the GitHub bug report form in your browser with module version, device, root manager, Zygisk backend, keystore setup and a short diagnostic log pre-filled. Nothing is submitted until you post it on GitHub.",
       "btn.repo": "GitHub Repository",
       "btn.profile": "GitHub Profile (@Najip)",
       "reboot.title": "Waiting for reboot",
@@ -985,6 +996,8 @@
       "toast.exported": "Saved to {path}",
       "toast.exportedPrivate": "Saved to {path} (root only)",
       "toast.exportFailed": "Failed to export log.",
+      "toast.reportOpening": "Opening GitHub issue form...",
+      "toast.reportFailed": "Failed to collect issue info.",
       "toast.logRefreshed": "Log refreshed.",
       "toast.logCopied": "Log copied.",
       "toast.logEmpty": "Log is empty.",
@@ -1012,9 +1025,12 @@
       "btn.capture": "抓取快照",
       "btn.export": "导出日志",
       "btn.exportPublic": "保存到下载目录",
+      "btn.reportIssue": "反馈问题",
+      "btn.openGithub": "打开 GitHub",
       "btn.saveAnyway": "仍然保存",
       "btn.cancel": "取消",
       "export.warn": "导出内容包含设备属性、已安装模块、包名和调试日志。下载目录中的文件可能被具有存储权限的其他应用读取。",
+      "report.warn": "将在浏览器中打开 GitHub 问题反馈表单，并自动预填模块版本、设备、Root 管理器、Zygisk 后端、密钥库配置和简短诊断日志。在你在 GitHub 上点击提交之前不会发送任何内容。",
       "btn.repo": "GitHub 仓库",
       "btn.profile": "GitHub 主页（@Najip）",
       "reboot.title": "等待重启",
@@ -1112,6 +1128,8 @@
       "toast.exported": "已保存到 {path}",
       "toast.exportedPrivate": "已保存到 {path}（仅 root 可读）",
       "toast.exportFailed": "导出日志失败。",
+      "toast.reportOpening": "正在打开 GitHub 问题表单…",
+      "toast.reportFailed": "收集反馈信息失败。",
       "toast.logRefreshed": "日志已刷新。",
       "toast.logCopied": "日志已复制。",
       "toast.logEmpty": "日志为空。",
@@ -1561,11 +1579,57 @@
   }
 
   function openExternalUrl(url) {
-    return ksuExec("am start -a android.intent.action.VIEW -d '" + url + "' >/dev/null 2>&1 || /system/bin/am start -a android.intent.action.VIEW -d '" + url + "' >/dev/null 2>&1").then(function (res) {
+    var safeUrl = String(url || "").replace(/'/g, "%27");
+    return ksuExec("am start -a android.intent.action.VIEW -d '" + safeUrl + "' >/dev/null 2>&1 || /system/bin/am start -a android.intent.action.VIEW -d '" + safeUrl + "' >/dev/null 2>&1").then(function (res) {
       if (res.errno !== 0) {
-        try { window.open(url, "_blank"); } catch (e) {}
+        try { window.open(safeUrl, "_blank"); } catch (e) {}
       }
     });
+  }
+
+  function buildIssueUrl(raw) {
+    var fields = {};
+    var logLines = [];
+    var inLog = false;
+    var lines = String(raw || "").split("\n");
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      if (!inLog) {
+        if (line === "LOG_BEGIN") {
+          inLog = true;
+          continue;
+        }
+        var eq = line.indexOf("=");
+        if (eq > 0) {
+          fields[line.slice(0, eq)] = line.slice(eq + 1).trim();
+        }
+      } else {
+        logLines.push(line);
+      }
+    }
+    var logText = logLines.join("\n").trim();
+    var maxLog = 2400;
+    if (logText.length > maxLog) {
+      var head = logText.slice(0, 1100);
+      var tail = logText.slice(-1100);
+      logText = head + "\n...\n[truncated for URL - attach full file from Export Log if needed]\n...\n" + tail;
+    }
+    var params = [
+      ["template", "bug_report.yml"],
+      ["version", fields.VERSION || ""],
+      ["device", fields.DEVICE || ""],
+      ["root", fields.ROOT || ""],
+      ["zygisk", fields.ZYGISK || ""],
+      ["tee", fields.TEE || ""],
+      ["log", logText]
+    ];
+    var qs = [];
+    for (var j = 0; j < params.length; j++) {
+      if (params[j][1]) {
+        qs.push(encodeURIComponent(params[j][0]) + "=" + encodeURIComponent(params[j][1]).replace(/'/g, "%27"));
+      }
+    }
+    return REPO_URL + "/issues/new?" + qs.join("&");
   }
 
   function refineLangFromSystem() {
@@ -1663,6 +1727,7 @@
   });
 
   document.getElementById("exportPublicBtn").addEventListener("click", function () {
+    document.getElementById("reportConfirm").style.display = "none";
     document.getElementById("exportConfirm").style.display = "flex";
   });
 
@@ -1673,6 +1738,27 @@
 
   document.getElementById("exportCancelBtn").addEventListener("click", function () {
     document.getElementById("exportConfirm").style.display = "none";
+  });
+
+  document.getElementById("reportIssueBtn").addEventListener("click", function () {
+    document.getElementById("exportConfirm").style.display = "none";
+    document.getElementById("reportConfirm").style.display = "flex";
+  });
+
+  document.getElementById("reportCancelBtn").addEventListener("click", function () {
+    document.getElementById("reportConfirm").style.display = "none";
+  });
+
+  document.getElementById("reportConfirmBtn").addEventListener("click", function () {
+    document.getElementById("reportConfirm").style.display = "none";
+    showToast(t("toast.reportOpening"));
+    return ksuExec(runScriptCmd("--issue-info")).then(function (res) {
+      if (res.errno !== 0 || !(res.stdout || "").trim()) {
+        showToast(t("toast.reportFailed"));
+        return;
+      }
+      return openExternalUrl(buildIssueUrl(res.stdout));
+    });
   });
 
   document.getElementById("refreshLogBtn").addEventListener("click", function () {
