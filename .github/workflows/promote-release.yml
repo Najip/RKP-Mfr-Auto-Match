@@ -11,16 +11,22 @@ on:
           - pre
           - ci
       release_tag:
-        description: "Release tag (e.g. v1.0.0)"
+        description: "Release tag (e.g. v0.3.0; leave blank to auto-derive)"
         type: string
-        required: true
+        required: false
+        default: ""
       changelog_notes:
         description: "Optional release notes (leave blank to auto-generate)"
         type: string
         default: ""
+      dry_run:
+        description: "Test download and repack without publishing a release"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   promote:
@@ -69,10 +75,26 @@ jobs:
           fi
           echo "src_file=${SRC_FILE}" >> "$GITHUB_OUTPUT"
 
-      - name: Repack ZIP with release version
+      - name: Determine release tag and repack ZIP
         id: pack
         run: |
           TAG="${{ inputs.release_tag }}"
+          if [[ -z "$TAG" ]]; then
+            SRC_REF="${{ steps.fetch.outputs.source_ref }}"
+            if [[ "$SRC_REF" == v* ]]; then
+              BASE_VER="${SRC_REF%%-*}"
+            else
+              PROP_VER="$(grep -E '^version=' module/module.prop | head -n1 | cut -d= -f2-)"
+              BASE_VER="${PROP_VER%%-*}"
+              [[ "$BASE_VER" == v* ]] || BASE_VER="v${BASE_VER:-0.1.0}"
+            fi
+            while git rev-parse -q --verify "refs/tags/${BASE_VER}" >/dev/null 2>&1; do
+              IFS='.' read -r MAJ MIN PAT <<< "${BASE_VER#v}"
+              BASE_VER="v${MAJ}.${MIN}.$(( ${PAT:-0} + 1 ))"
+            done
+            TAG="${BASE_VER}"
+          fi
+
           VER_CODE="$(date -u +%s)"
           ZIP_NAME="rkp-mfr-auto-${TAG}.zip"
 
@@ -81,18 +103,26 @@ jobs:
           sed -i "s/^versionCode=.*/versionCode=${VER_CODE}/" /tmp/repack/module.prop
           (cd /tmp/repack && zip -r9 "${GITHUB_WORKSPACE}/${ZIP_NAME}" .)
 
+          echo "Repacked ${ZIP_NAME}:"
+          cat /tmp/repack/module.prop
+
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "zip_name=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
           echo "version_code=${VER_CODE}" >> "$GITHUB_OUTPUT"
 
       - name: Create Full Release
+        if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="${{ inputs.release_tag }}"
+          TAG="${{ steps.pack.outputs.tag }}"
           ZIP="${{ steps.pack.outputs.zip_name }}"
           NOTES="${{ inputs.changelog_notes }}"
 
-          if [[ -n "$NOTES" ]]; then
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ZIP" --clobber
+            gh release edit "$TAG" --prerelease=false
+          elif [[ -n "$NOTES" ]]; then
             gh release create "$TAG" "$ZIP" \
               --target main \
               --title "RKP Manufacturer Auto-Match ${TAG}" \
@@ -105,10 +135,11 @@ jobs:
           fi
 
       - name: Update update.json and changelog.md
+        if: ${{ !inputs.dry_run }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="${{ inputs.release_tag }}"
+          TAG="${{ steps.pack.outputs.tag }}"
           VER_CODE="${{ steps.pack.outputs.version_code }}"
           ZIP="${{ steps.pack.outputs.zip_name }}"
           REPO="${GITHUB_REPOSITORY}"
