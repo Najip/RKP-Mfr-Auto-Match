@@ -13,12 +13,13 @@ on:
       source:
         description: "Reuse artifact from"
         type: choice
-        default: "ci"
+        default: "latest-ci"
         options:
-          - ci
-          - pre
+          - latest-ci
+          - selected-ci
+          - latest-pre
       run_id:
-        description: "CI run ID (for source=ci; leave blank for latest successful Build & Deploy run)"
+        description: "Required for selected-ci: run number (#42), run ID, or Actions URL"
         type: string
         required: false
         default: ""
@@ -58,7 +59,7 @@ jobs:
           mkdir -p /tmp/src_zip /tmp/repack
           SOURCE="${{ inputs.source }}"
 
-          if [[ "$SOURCE" == "pre" ]]; then
+          if [[ "$SOURCE" == "latest-pre" ]]; then
             PRE_TAG=$(gh release list --limit 30 --json tagName,isPrerelease \
               --jq '[.[] | select(.isPrerelease == true)][0].tagName')
             if [[ -z "$PRE_TAG" || "$PRE_TAG" == "null" ]]; then
@@ -77,8 +78,35 @@ jobs:
             echo "source_ref=${PRE_TAG}" >> "$GITHUB_OUTPUT"
             echo "target_sha=${TARGET_SHA}" >> "$GITHUB_OUTPUT"
           else
-            RUN_ID="${{ inputs.run_id }}"
-            if [[ -z "$RUN_ID" ]]; then
+            RUN_ID=""
+            if [[ "$SOURCE" == "selected-ci" ]]; then
+              RAW_RUN="$(echo "${{ inputs.run_id }}" | xargs)"
+              if [[ -z "$RAW_RUN" ]]; then
+                echo "source=selected-ci requires run_id (run number, run ID, or Actions URL)." >&2
+                exit 1
+              fi
+              if [[ "$RAW_RUN" =~ /actions/runs/([0-9]+) ]]; then
+                RUN_ID="${BASH_REMATCH[1]}"
+              else
+                CLEAN_NUM="${RAW_RUN#\#}"
+                if [[ "$CLEAN_NUM" =~ ^[0-9]+$ ]]; then
+                  if gh run view "$CLEAN_NUM" --json databaseId >/dev/null 2>&1; then
+                    RUN_ID="$CLEAN_NUM"
+                  else
+                    RUN_ID=$(gh run list --workflow "build.yml" --limit 100 \
+                      --json databaseId,number \
+                      --jq ".[] | select(.number == ${CLEAN_NUM}) | .databaseId" | head -n 1)
+                  fi
+                else
+                  echo "Could not parse CI run input: ${RAW_RUN}" >&2
+                  exit 1
+                fi
+              fi
+              if [[ -z "$RUN_ID" || "$RUN_ID" == "null" ]]; then
+                echo "Could not find Build & Deploy run matching: ${RAW_RUN}" >&2
+                exit 1
+              fi
+            else
               RUN_ID=$(gh run list --workflow "build.yml" --status success --limit 20 \
                 --json databaseId --jq '.[0].databaseId')
             fi
