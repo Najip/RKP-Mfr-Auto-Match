@@ -38,7 +38,15 @@ jobs:
         id: meta
         run: |
           SHORT_SHA="${GITHUB_SHA::7}"
-          VER_CODE="$(date -u +%s)"
+          VER_CODE="$(bash .github/scripts/version_code.sh)"
+
+          # Never publish a build whose versionCode would look like a downgrade
+          # to devices already on update.json's release.
+          UPDATE_CODE="$(jq -r '.versionCode // 0' update.json 2>/dev/null || echo 0)"
+          if [ "$VER_CODE" -le "$UPDATE_CODE" ]; then
+            echo "versionCode $VER_CODE is not greater than update.json ($UPDATE_CODE)" >&2
+            exit 1
+          fi
 
           # Derive base semver (vX.Y.Z) from module/module.prop (e.g. v0.3.0-pre.1 -> v0.3.0)
           PROP_VER="$(grep -E '^version=' module/module.prop | head -n1 | cut -d= -f2-)"
