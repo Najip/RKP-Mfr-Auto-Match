@@ -40,21 +40,43 @@ jobs:
           SHORT_SHA="${GITHUB_SHA::7}"
           VER_CODE="$(date -u +%s)"
 
+          # Derive base semver (vX.Y.Z) from module/module.prop (e.g. v0.3.0-pre.1 -> v0.3.0)
+          PROP_VER="$(grep -E '^version=' module/module.prop | head -n1 | cut -d= -f2-)"
+          BASE_VER="${PROP_VER%%-*}"
+          [[ "$BASE_VER" == v* ]] || BASE_VER="v${BASE_VER:-0.1.0}"
+
+          # If BASE_VER was already published as a full release tag, bump patch (vX.Y.Z -> vX.Y.(Z+1))
+          while git rev-parse -q --verify "refs/tags/${BASE_VER}" >/dev/null 2>&1; do
+            IFS='.' read -r MAJ MIN PAT <<< "${BASE_VER#v}"
+            BASE_VER="v${MAJ}.${MIN}.$(( ${PAT:-0} + 1 ))"
+          done
+
+          next_pre_tag() {
+            local max_n=0 n
+            for t in $(git tag -l "${BASE_VER}-pre.*"); do
+              n="${t##*-pre.}"
+              if [[ "$n" =~ ^[0-9]+$ ]] && (( n > max_n )); then
+                max_n="$n"
+              fi
+            done
+            echo "${BASE_VER}-pre.$((max_n + 1))"
+          }
+
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
             MODE="${{ inputs.mode }}"
             TAG="${{ inputs.tag }}"
             if [[ -z "$TAG" ]]; then
               if [[ "$MODE" == "release" ]]; then
-                TAG="v1.0.${GITHUB_RUN_NUMBER}"
+                TAG="${BASE_VER}"
               elif [[ "$MODE" == "pre" ]]; then
-                TAG="pre-${GITHUB_RUN_NUMBER}-${SHORT_SHA}"
+                TAG="$(next_pre_tag)"
               else
-                TAG="ci-${GITHUB_RUN_NUMBER}-${SHORT_SHA}"
+                TAG="${BASE_VER}-ci.${GITHUB_RUN_NUMBER}.${SHORT_SHA}"
               fi
             fi
           elif [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
             MODE="ci"
-            TAG="pr-${GITHUB_RUN_NUMBER}-${SHORT_SHA}"
+            TAG="${BASE_VER}-pr.${GITHUB_RUN_NUMBER}.${SHORT_SHA}"
           elif [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
             TAG="${GITHUB_REF_NAME}"
             if [[ "$TAG" == *-* ]]; then
@@ -65,7 +87,7 @@ jobs:
           else
             # Every push to main deploys a pre-release automatically
             MODE="pre"
-            TAG="pre-${GITHUB_RUN_NUMBER}-${SHORT_SHA}"
+            TAG="$(next_pre_tag)"
           fi
 
           ZIP_NAME="rkp-mfr-auto-${TAG}.zip"
