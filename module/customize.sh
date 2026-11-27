@@ -6,32 +6,45 @@ set_perm "$MODPATH/post-fs-data.sh" 0 0 0755
 
 # Detect Zygisk backend (required)
 ZYGISK_BACKEND=""
-for d in /data/adb/modules/*; do
-  [ -d "$d" ] || continue
-  [ -f "$d/disable" ] && continue
-  [ -f "$d/remove" ] && continue
-  bname="${d##*/}"
-  case "$bname" in
-    rkp_mfr_auto) continue ;;
-    rezygisk) ZYGISK_BACKEND="ReZygisk"; break ;;
-    zygisksu) ZYGISK_BACKEND="Zygisk Next"; break ;;
-    brezygisk|BreZygisk) ZYGISK_BACKEND="BreZygisk"; break ;;
-    neozygisk) ZYGISK_BACKEND="NeoZygisk"; break ;;
-  esac
-  if [ -f "$d/module.prop" ]; then
-    mname=$(grep -iE '^name=' "$d/module.prop" 2>/dev/null | head -n 1 | cut -d= -f2-)
-    case "$(printf '%s %s' "$bname" "$mname" | tr 'A-Z' 'a-z')" in
-      *zygisk*)
-        ZYGISK_BACKEND="${mname:-$bname}"
-        break
-        ;;
-    esac
+for pair in \
+  "rezygisk|ReZygisk" \
+  "zygisksu|Zygisk Next" \
+  "brezygisk|BreZygisk" \
+  "BreZygisk|BreZygisk" \
+  "neozygisk|NeoZygisk"
+do
+  id="${pair%%|*}"
+  label="${pair#*|}"
+  d="/data/adb/modules/$id"
+  if [ -d "$d" ] && [ ! -f "$d/disable" ] && [ ! -f "$d/remove" ]; then
+    ZYGISK_BACKEND="$label"
+    break
   fi
 done
 
 if [ -z "$ZYGISK_BACKEND" ] && command -v magisk >/dev/null 2>&1; then
   ZVAL=$(magisk --sqlite "SELECT value FROM settings WHERE key='zygisk';" 2>/dev/null | sed 's/.*=//')
   [ "$ZVAL" = "1" ] && ZYGISK_BACKEND="Magisk Zygisk"
+fi
+
+if [ -z "$ZYGISK_BACKEND" ]; then
+  for d in /data/adb/modules/*; do
+    [ -d "$d" ] || continue
+    [ -f "$d/disable" ] && continue
+    [ -f "$d/remove" ] && continue
+    [ -d "$d/zygisk" ] && continue
+    bname="${d##*/}"
+    [ "$bname" = "rkp_mfr_auto" ] && continue
+    if [ -f "$d/module.prop" ]; then
+      mname=$(grep -iE '^name=' "$d/module.prop" 2>/dev/null | head -n 1 | cut -d= -f2-)
+      case "$(printf '%s %s' "$bname" "$mname" | tr 'A-Z' 'a-z')" in
+        *rezygisk*|*zygisksu*|*zygisk*next*|*brezygisk*|*neozygisk*)
+          ZYGISK_BACKEND="${mname:-$bname}"
+          break
+          ;;
+      esac
+    fi
+  done
 fi
 
 if [ -z "$ZYGISK_BACKEND" ]; then

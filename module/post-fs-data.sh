@@ -3,31 +3,25 @@ MODDIR="${0%/*}"
 LOG="$MODDIR/last.log"
 CONF="/data/adb/rkp_mfr_auto.conf"
 MFR_FILE="/data/adb/rkp_mfr_auto.mfr"
+REAL_MFR_FILE="/data/adb/rkp_mfr_auto.real_mfr"
 EXCLUDE_FILE="/data/adb/rkp_mfr_auto.exclude"
 REBOOT_FLAG="/data/adb/rkp_mfr_auto.reboot"
 MODPROP="$MODDIR/module.prop"
 
 detect_zygisk_backend() {
-  for d in /data/adb/modules/*; do
-    [ -d "$d" ] || continue
-    [ -f "$d/disable" ] && continue
-    [ -f "$d/remove" ] && continue
-    bname="${d##*/}"
-    case "$bname" in
-      rkp_mfr_auto) continue ;;
-      rezygisk) echo "ReZygisk"; return ;;
-      zygisksu) echo "Zygisk Next"; return ;;
-      brezygisk|BreZygisk) echo "BreZygisk"; return ;;
-      neozygisk) echo "NeoZygisk"; return ;;
-    esac
-    if [ -f "$d/module.prop" ]; then
-      mname=$(grep -iE '^name=' "$d/module.prop" 2>/dev/null | head -n 1 | cut -d= -f2-)
-      case "$(printf '%s %s' "$bname" "$mname" | tr 'A-Z' 'a-z')" in
-        *zygisk*)
-          echo "${mname:-$bname}"
-          return
-          ;;
-      esac
+  for pair in \
+    "rezygisk|ReZygisk" \
+    "zygisksu|Zygisk Next" \
+    "brezygisk|BreZygisk" \
+    "BreZygisk|BreZygisk" \
+    "neozygisk|NeoZygisk"
+  do
+    id="${pair%%|*}"
+    label="${pair#*|}"
+    d="/data/adb/modules/$id"
+    if [ -d "$d" ] && [ ! -f "$d/disable" ] && [ ! -f "$d/remove" ]; then
+      echo "$label"
+      return
     fi
   done
   if command -v magisk >/dev/null 2>&1; then
@@ -37,6 +31,24 @@ detect_zygisk_backend() {
       return
     fi
   fi
+  for d in /data/adb/modules/*; do
+    [ -d "$d" ] || continue
+    [ -f "$d/disable" ] && continue
+    [ -f "$d/remove" ] && continue
+    # Skip Zygisk consumer modules (like HMA-OSS) that ship a zygisk/ hooks folder
+    [ -d "$d/zygisk" ] && continue
+    bname="${d##*/}"
+    [ "$bname" = "rkp_mfr_auto" ] && continue
+    if [ -f "$d/module.prop" ]; then
+      mname=$(grep -iE '^name=' "$d/module.prop" 2>/dev/null | head -n 1 | cut -d= -f2-)
+      case "$(printf '%s %s' "$bname" "$mname" | tr 'A-Z' 'a-z')" in
+        *rezygisk*|*zygisksu*|*zygisk*next*|*brezygisk*|*neozygisk*)
+          echo "${mname:-$bname}"
+          return
+          ;;
+      esac
+    fi
+  done
   echo ""
 }
 
@@ -322,15 +334,26 @@ update_module_desc() {
   awk -v d="$DESC" 'BEGIN{done=0} /^description=/{print "description=" d; done=1; next} {print} END{if(!done) print "description=" d}' "$MODPROP" > "${MODPROP}.tmp" 2>/dev/null && mv "${MODPROP}.tmp" "$MODPROP"
 }
 
+list_packages_raw() {
+  if command -v pm >/dev/null 2>&1; then
+    pm list packages "$@" 2>/dev/null
+  elif [ -x /system/bin/pm ]; then
+    /system/bin/pm list packages "$@" 2>/dev/null
+  elif command -v cmd >/dev/null 2>&1; then
+    cmd package list packages "$@" 2>/dev/null
+  elif [ -x /system/bin/cmd ]; then
+    /system/bin/cmd package list packages "$@" 2>/dev/null
+  fi
+}
+
 if [ "$1" = "--list-apps" ]; then
   SHOW_ALL=0
   [ "$2" = "all" ] && SHOW_ALL=1
-  ALL_PKGS=$(pm list packages 2>/dev/null | sed 's/^package://' | sort -u)
-  USER_PKGS=$(pm list packages -3 2>/dev/null | sed 's/^package://')
-  awk -v show_all="$SHOW_ALL" -v ulist="$USER_PKGS" -v efile="$EXCLUDE_FILE" '
+  {
+    list_packages_raw -3 | sed 's/^package:/U|/'
+    list_packages_raw | sed 's/^package:/A|/' | sort -u
+  } | awk -F'|' -v show_all="$SHOW_ALL" -v efile="$EXCLUDE_FILE" '
     BEGIN {
-      n = split(ulist, ua, "\n")
-      for (i = 1; i <= n; i++) if (ua[i] != "") is_user[ua[i]] = 1
       if (efile != "") {
         while ((getline line < efile) > 0) {
           gsub(/\r/, "", line)
@@ -351,8 +374,14 @@ if [ "$1" = "--list-apps" ]; then
       if (p == "com.xiaomi.camera") return 1
       return 0
     }
-    {
-      p = $0
+    $1 == "U" {
+      gsub(/\r/, "", $2)
+      if ($2 != "") is_user[$2] = 1
+      next
+    }
+    $1 == "A" {
+      p = $2
+      gsub(/\r/, "", p)
       if (p == "") next
       f = is_fixed(p)
       u = (p in is_user) ? 1 : 0
@@ -361,9 +390,7 @@ if [ "$1" = "--list-apps" ]; then
         printf "%s|%s|%d|%d\n", p, (u ? "user" : "sys"), f, e
       }
     }
-  ' <<EOF
-$ALL_PKGS
-EOF
+  '
   exit 0
 fi
 
@@ -441,17 +468,40 @@ if [ -z "$MFR" ]; then
   exit 0
 fi
 
-# Save detected manufacturer for Zygisk companion
+# Save real stock manufacturer before changing ro.product.manufacturer
+REAL_MFR=""
+CUR_M=$(getprop ro.product.manufacturer 2>/dev/null)
+if [ -n "$CUR_M" ] && [ "$CUR_M" != "$MFR" ]; then
+  REAL_MFR="$CUR_M"
+elif [ -f "$REAL_MFR_FILE" ]; then
+  REAL_MFR=$(head -n 1 "$REAL_MFR_FILE" 2>/dev/null)
+fi
+if [ -z "$REAL_MFR" ] || [ "$REAL_MFR" = "$MFR" ]; then
+  for p in ro.product.system.manufacturer ro.product.odm.manufacturer ro.product.vendor.manufacturer ro.product.system_ext.manufacturer; do
+    val=$(getprop "$p" 2>/dev/null)
+    if [ -n "$val" ] && [ "$val" != "$MFR" ]; then
+      REAL_MFR="$val"
+      break
+    fi
+  done
+fi
+if [ -n "$REAL_MFR" ]; then
+  printf '%s\n' "$REAL_MFR" > "$REAL_MFR_FILE"
+  chmod 0644 "$REAL_MFR_FILE" 2>/dev/null
+fi
+
+# Save detected manufacturer for status/reference
 printf '%s\n' "$MFR" > "$MFR_FILE"
 chmod 0644 "$MFR_FILE" 2>/dev/null
 
-# Keep global ro.product.manufacturer stock so camera apps don't crash.
-# Set manufacturer_for_attestation (and optional vendor manufacturer if enabled) via resetprop.
+# Apply RKP manufacturer natively via resetprop so detectors pass with zero Zygisk maps.
+# Zygisk only stays loaded for whitelisted/camera apps to restore REAL_MFR.
 if [ -n "$RP" ]; then
-  CUR_A=$(getprop ro.product.manufacturer_for_attestation)
+  [ "$CUR_M" != "$MFR" ] && "$RP" -n ro.product.manufacturer "$MFR"
+  CUR_A=$(getprop ro.product.manufacturer_for_attestation 2>/dev/null)
   [ "$CUR_A" != "$MFR" ] && "$RP" -n ro.product.manufacturer_for_attestation "$MFR"
   if [ "$SPOOF_VENDOR_MFR" = "1" ]; then
-    CUR_V=$(getprop ro.product.vendor.manufacturer)
+    CUR_V=$(getprop ro.product.vendor.manufacturer 2>/dev/null)
     [ "$CUR_V" != "$MFR" ] && "$RP" -n ro.product.vendor.manufacturer "$MFR"
   fi
 fi
