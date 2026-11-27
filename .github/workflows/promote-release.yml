@@ -95,7 +95,12 @@ jobs:
             TAG="${BASE_VER}"
           fi
 
-          VER_CODE="$(date -u +%s)"
+          VER_CODE="$(bash .github/scripts/version_code.sh)"
+          UPDATE_CODE="$(jq -r '.versionCode // 0' update.json 2>/dev/null || echo 0)"
+          if [ "$VER_CODE" -le "$UPDATE_CODE" ]; then
+            echo "versionCode $VER_CODE is not greater than update.json ($UPDATE_CODE)" >&2
+            exit 1
+          fi
           ZIP_NAME="rkp-mfr-auto-${TAG}.zip"
 
           unzip -q "${{ steps.fetch.outputs.src_file }}" -d /tmp/repack

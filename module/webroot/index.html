@@ -619,70 +619,86 @@
       opacity: 0.55;
       cursor: not-allowed;
     }
+    .warn-title {
+      font-weight: 700;
+      font-size: 13px;
+      margin-bottom: 3px;
+    }
+
+    .warn-item {
+      font-size: 13px;
+      line-height: 1.45;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <header>
       <div>
-        <h1>RKP Manufacturer Auto-Match</h1>
+        <h1 data-i18n="app.title">RKP Manufacturer Auto-Match</h1>
         <div class="subtitle">rkp_mfr_auto</div>
       </div>
       <div class="header-actions">
-        <button class="icon-btn primary" id="hotApplyBtn" type="button">Hot Apply</button>
-        <button class="icon-btn" id="refreshBtn" type="button">Refresh</button>
+        <button class="icon-btn primary" id="hotApplyBtn" type="button" data-i18n="btn.hotApply">Hot Apply</button>
+        <button class="icon-btn" id="refreshBtn" type="button" data-i18n="btn.refresh">Refresh</button>
       </div>
     </header>
 
     <div id="rebootBanner" class="reboot-banner">
       <div>
-        <div class="reboot-banner-title">Waiting for reboot</div>
-        <div class="reboot-banner-desc">You changed a setting that requires a reboot to take effect.</div>
+        <div class="reboot-banner-title" data-i18n="reboot.title">Waiting for reboot</div>
+        <div class="reboot-banner-desc" data-i18n="reboot.desc">You changed a setting that requires a reboot to take effect.</div>
       </div>
-      <button type="button" class="reboot-btn" id="rebootNowBtn">Reboot</button>
+      <button type="button" class="reboot-btn" id="rebootNowBtn" data-i18n="reboot.now">Reboot</button>
     </div>
 
     <!-- HOME TAB -->
     <section id="tab-home" class="tab-panel active">
       <div id="statusBanner" class="status-banner info">
         <div>
-          <div id="statusTitle" class="status-title">Checking keybox...</div>
-          <div id="statusDesc" class="status-desc">Reading active keybox and current manufacturer props.</div>
+          <div id="statusTitle" class="status-title" data-i18n="status.checkingTitle">Checking keybox...</div>
+          <div id="statusDesc" class="status-desc" data-i18n="status.checkingDesc">Reading active keybox and current manufacturer props.</div>
         </div>
       </div>
 
+      <div id="compatWarn" class="suggest-box caution" style="display:none;margin:0 0 12px;"></div>
+
       <div class="card">
-        <div class="card-title">Keybox Check</div>
+        <div class="card-title" data-i18n="card.keybox">Keybox Check</div>
         <div class="kv-row">
-          <span class="kv-key">Keybox type</span>
+          <span class="kv-key" data-i18n="kv.keyboxType">Keybox type</span>
           <span class="kv-val" id="kbType">-</span>
         </div>
         <div class="kv-row">
-          <span class="kv-key">RKP map[3]</span>
+          <span class="kv-key" data-i18n="kv.rkpMfr">RKP map[3]</span>
           <span class="kv-val" id="kbMfr">-</span>
         </div>
         <div class="kv-row">
-          <span class="kv-key">Zygisk backend</span>
+          <span class="kv-key" data-i18n="kv.zygisk">Zygisk backend</span>
           <span class="kv-val" id="zygiskVal">-</span>
         </div>
         <div class="kv-row">
-          <span class="kv-key">Path</span>
+          <span class="kv-key" data-i18n="kv.keystoreModule">Keystore module</span>
+          <span class="kv-val" id="ksModuleVal">-</span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-key" data-i18n="kv.path">Path</span>
           <span class="kv-val" id="kbPath">-</span>
         </div>
       </div>
 
       <div class="card" id="appsCard">
-        <div class="card-title">Detected Apps</div>
-        <div id="appsContent" class="setting-desc">Checking installed apps...</div>
+        <div class="card-title" data-i18n="card.apps">Detected Apps</div>
+        <div id="appsContent" class="setting-desc" data-i18n="common.loading">Checking installed apps...</div>
       </div>
 
       <div class="card" id="conflictCard" style="display:none;">
-        <div class="card-title">Possible Conflicts</div>
+        <div class="card-title" data-i18n="card.conflicts">Possible Conflicts</div>
         <div id="conflictContent" class="setting-desc"></div>
       </div>
 
       <div class="card">
-        <div class="card-title">Current Props</div>
+        <div class="card-title" data-i18n="card.props">Current Props</div>
         <div class="kv-row">
           <span class="kv-key">ro.product.manufacturer</span>
           <span class="kv-val" id="propMfr">-</span>
@@ -698,7 +714,7 @@
       </div>
 
       <div class="card">
-        <div class="card-title">Last Boot / Apply Log</div>
+        <div class="card-title" data-i18n="card.log">Last Boot / Apply Log</div>
         <div class="log-box" id="bootLog">-</div>
       </div>
     </section>
@@ -706,15 +722,15 @@
     <!-- APPS TAB -->
     <section id="tab-apps" class="tab-panel">
       <div class="card">
-        <div class="card-title">App Whitelist (Excluded from Spoofing)</div>
-        <div class="setting-desc" style="margin-bottom: 10px;">
+        <div class="card-title" data-i18n="apps.cardTitle">App Whitelist (Excluded from Spoofing)</div>
+        <div class="setting-desc" style="margin-bottom: 10px;" data-i18n="apps.desc">
           Only installed apps are shown. Turn on an app to keep its real manufacturer (no spoofing). Changes apply on next app restart (no reboot required).
         </div>
-        <input type="search" id="appSearch" class="search-input" placeholder="Search installed package..." />
+        <input type="search" id="appSearch" class="search-input" placeholder="Search installed package..." data-i18n-placeholder="apps.search" />
         <div class="filter-row">
-          <span id="appCountText">Loading installed apps...</span>
+          <span id="appCountText" data-i18n="common.loading">Loading installed apps...</span>
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-            <span>Show system apps</span>
+            <span data-i18n="apps.showSystem">Show system apps</span>
             <input type="checkbox" id="showSystemToggle" />
           </label>
         </div>
@@ -724,43 +740,13 @@
 
     <!-- SETTINGS TAB -->
     <section id="tab-settings" class="tab-panel">
-      <!-- Hidden for now (forced off in post-fs-data.sh; kept in case needed later)
       <div class="card">
-        <div class="card-title">Zygisk Props</div>
+        <div class="card-title" data-i18n="settings.debugCard">Debug Logging</div>
         <div class="setting-row">
           <div>
-            <div class="setting-title">Spoof ro.product.vendor.manufacturer</div>
-            <div class="setting-desc">
-              Off by default. Only turn this on if a detector still flags a vendor manufacturer mismatch. Pixel Camera still gets the stock value back when it is detected.
-            </div>
-          </div>
-          <label class="switch">
-            <input type="checkbox" id="vendorToggle" />
-            <span class="slider"></span>
-          </label>
-        </div>
-        <div class="setting-row" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
-          <div>
-            <div class="setting-title">Keep global ro.product.manufacturer stock</div>
-            <div class="setting-desc">
-              Off by default. Turn this on if a DenyList/Unmount banking or UPI app breaks when global <code>ro.product.manufacturer</code> is modified. Keeps global manufacturer stock and uses stealth Zygisk spoofing on non-whitelisted apps instead (requires reboot).
-            </div>
-          </div>
-          <label class="switch">
-            <input type="checkbox" id="stockGlobalToggle" />
-            <span class="slider"></span>
-          </label>
-        </div>
-      </div>
-      -->
-
-      <div class="card">
-        <div class="card-title">Debug Logging</div>
-        <div class="setting-row">
-          <div>
-            <div class="setting-title">Enable debug log</div>
-            <div class="setting-desc">
-              Logs installed modules, Zygisk backend, keybox/prop state, package listing diagnostics (for blank whitelist debugging), and per-app Zygisk actions to <code>/data/adb/rkp_mfr_auto.log</code>. Off by default.
+            <div class="setting-title" data-i18n="settings.debug.title">Enable debug log</div>
+            <div class="setting-desc" data-i18n="settings.debug.desc">
+              Logs the detected keystore module, Zygisk backend, keybox/prop state, package listing diagnostics, and per-app Zygisk actions to /data/adb/rkp_mfr_auto.log. Off by default.
             </div>
           </div>
           <label class="switch">
@@ -770,45 +756,69 @@
         </div>
         <div id="debugLogPanel" style="margin-top:12px;">
           <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-            <button type="button" class="btn-chip primary" id="captureLogBtn">Capture Snapshot</button>
-            <button type="button" class="btn-chip primary" id="exportLogBtn">Export to Download</button>
-            <button type="button" class="btn-chip" id="refreshLogBtn">Refresh</button>
-            <button type="button" class="btn-chip" id="copyLogBtn">Copy</button>
-            <button type="button" class="btn-chip" id="clearLogBtn">Clear</button>
+            <button type="button" class="btn-chip primary" id="captureLogBtn" data-i18n="btn.capture">Capture Snapshot</button>
+            <button type="button" class="btn-chip primary" id="exportLogBtn" data-i18n="btn.export">Export Log</button>
+            <button type="button" class="btn-chip" id="exportPublicBtn" data-i18n="btn.exportPublic">Save to Download</button>
+            <button type="button" class="btn-chip" id="refreshLogBtn" data-i18n="btn.refreshLog">Refresh</button>
+            <button type="button" class="btn-chip" id="copyLogBtn" data-i18n="btn.copy">Copy</button>
+            <button type="button" class="btn-chip" id="clearLogBtn" data-i18n="btn.clear">Clear</button>
           </div>
-          <div class="log-box" id="debugLogBox" style="max-height:220px;overflow-y:auto;white-space:pre-wrap;">Debug log is empty.</div>
+          <div id="exportConfirm" class="suggest-box caution" style="display:none;margin:0 0 10px;">
+            <div data-i18n="export.warn">The export contains device props, installed module names, package names and the debug log. Files in Download can be read by other apps with storage access.</div>
+            <div style="display:flex;gap:8px;">
+              <button type="button" class="link-btn" id="exportConfirmBtn" data-i18n="btn.saveAnyway">Save anyway</button>
+              <button type="button" class="btn-chip" id="exportCancelBtn" data-i18n="btn.cancel">Cancel</button>
+            </div>
+          </div>
+          <div class="log-box" id="debugLogBox" style="max-height:220px;overflow-y:auto;white-space:pre-wrap;" data-i18n="log.empty">Debug log is empty.</div>
         </div>
       </div>
 
       <div class="card">
-        <div class="card-title">Color Theme</div>
-        <div class="setting-desc">Choose how this WebUI looks.</div>
+        <div class="card-title" data-i18n="settings.langCard">Language</div>
+        <div class="setting-desc" data-i18n="settings.lang.desc">Follow the system language, or pick one manually.</div>
+        <div class="theme-grid" id="langGrid">
+          <button type="button" class="theme-opt" data-lang-choice="system">
+            <span class="swatch swatch-system"></span><span data-i18n="lang.system">System</span>
+          </button>
+          <button type="button" class="theme-opt" data-lang-choice="zh">
+            <span data-i18n="lang.zh">简体中文</span>
+          </button>
+          <button type="button" class="theme-opt" data-lang-choice="en">
+            <span data-i18n="lang.en">English</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" data-i18n="settings.themeCard">Color Theme</div>
+        <div class="setting-desc" data-i18n="settings.theme.desc">Choose how this WebUI looks.</div>
         <div class="theme-grid" id="themeGrid">
           <button type="button" class="theme-opt" data-theme-choice="system">
             <span class="swatch swatch-system"></span>
-            System
+            <span data-i18n="theme.system">System</span>
           </button>
           <button type="button" class="theme-opt" data-theme-choice="light">
             <span class="swatch swatch-light"></span>
-            Light
+            <span data-i18n="theme.light">Light</span>
           </button>
           <button type="button" class="theme-opt" data-theme-choice="dark">
             <span class="swatch swatch-dark"></span>
-            Dark
+            <span data-i18n="theme.dark">Dark</span>
           </button>
           <button type="button" class="theme-opt" data-theme-choice="amoled">
             <span class="swatch swatch-amoled"></span>
-            AMOLED
+            <span data-i18n="theme.amoled">AMOLED</span>
           </button>
         </div>
       </div>
 
       <div class="card">
-        <div class="card-title">Links</div>
-        <div class="setting-desc" style="margin-bottom:10px;">Open project source or author profile in your browser.</div>
+        <div class="card-title" data-i18n="settings.linksCard">Links</div>
+        <div class="setting-desc" style="margin-bottom:10px;" data-i18n="settings.links.desc">Open project source or author profile in your browser.</div>
         <div style="display:flex;flex-wrap:wrap;gap:8px;">
-          <button type="button" class="btn-chip primary" id="openRepoBtn">GitHub Repository</button>
-          <button type="button" class="btn-chip" id="openUserBtn">GitHub Profile (@Najip)</button>
+          <button type="button" class="btn-chip primary" id="openRepoBtn" data-i18n="btn.repo">GitHub Repository</button>
+          <button type="button" class="btn-chip" id="openUserBtn" data-i18n="btn.profile">GitHub Profile (@Najip)</button>
         </div>
       </div>
     </section>
@@ -821,7 +831,7 @@
           <path d="M3 10.5 12 3l9 7.5" />
           <path d="M5 9.5V20h14V9.5" />
         </svg>
-        Home
+        <span data-i18n="nav.home">Home</span>
       </button>
       <button type="button" class="nav-btn" data-tab="apps">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -830,535 +840,925 @@
           <rect x="3" y="14" width="7" height="7" rx="1.5" />
           <rect x="14" y="14" width="7" height="7" rx="1.5" />
         </svg>
-        Apps
+        <span data-i18n="nav.apps">Apps</span>
       </button>
       <button type="button" class="nav-btn" data-tab="settings">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3" />
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c0 .66.39 1.26 1 1.51.18.08.38.12.58.12H21a2 2 0 1 1 0 4h-.09c-.66 0-1.26.39-1.51 1z" />
         </svg>
-        Settings
+        <span data-i18n="nav.settings">Settings</span>
       </button>
     </div>
   </nav>
 
   <div id="toast" class="toast"></div>
-
   <script>
-    const SCRIPT_PATH = "/data/adb/modules/rkp_mfr_auto/post-fs-data.sh";
-    const CONF_PATH = "/data/adb/rkp_mfr_auto.conf";
-    const EXCLUDE_PATH = "/data/adb/rkp_mfr_auto.exclude";
-    const DEBUG_LOG_PATH = "/data/adb/rkp_mfr_auto.log";
-    const REPO_URL = "https://github.com/Najip/RKP-Mfr-Auto-Match";
-    const USER_URL = "https://github.com/Najip";
-    const THEME_KEY = "rkp_mfr_auto_theme";
-    let cbCounter = 0;
-    let toastTimer = null;
-    let installedApps = [];
-    let appsLoaded = false;
+(function () {
+  "use strict";
 
-    function runScriptCmd(arg) {
-      return `if [ -x /data/adb/ksu/bin/busybox ]; then /data/adb/ksu/bin/busybox sh "${SCRIPT_PATH}" ${arg}; else sh "${SCRIPT_PATH}" ${arg}; fi`;
+  var SCRIPT_PATH = "/data/adb/modules/rkp_mfr_auto/post-fs-data.sh";
+  var CONF_PATH = "/data/adb/rkp_mfr_auto.conf";
+  var EXCLUDE_PATH = "/data/adb/rkp_mfr_auto.exclude";
+  var DEBUG_LOG_PATH = "/data/adb/rkp_mfr_auto.log";
+  var REPO_URL = "https://github.com/Najip/RKP-Mfr-Auto-Match";
+  var USER_URL = "https://github.com/Najip";
+  var THEME_KEY = "rkp_mfr_auto_theme";
+  var LANG_KEY = "rkp_mfr_auto_lang";
+
+  var langMode = "system";
+  var lang = "en";
+  var langFromSystem = false;
+  var cbCounter = 0;
+  var toastTimer = null;
+  var installedApps = [];
+  var appsLoaded = false;
+
+  var I18N = {
+    en: {
+      "app.title": "RKP Manufacturer Auto-Match",
+      "btn.hotApply": "Hot Apply",
+      "btn.refresh": "Refresh",
+      "btn.refreshLog": "Refresh",
+      "btn.copy": "Copy",
+      "btn.clear": "Clear",
+      "btn.capture": "Capture Snapshot",
+      "btn.export": "Export Log",
+      "btn.exportPublic": "Save to Download",
+      "btn.saveAnyway": "Save anyway",
+      "btn.cancel": "Cancel",
+      "export.warn": "The export contains device props, installed module names, package names and the debug log. Files in Download can be read by other apps with storage access.",
+      "btn.repo": "GitHub Repository",
+      "btn.profile": "GitHub Profile (@Najip)",
+      "reboot.title": "Waiting for reboot",
+      "reboot.desc": "You changed a setting that requires a reboot to take effect.",
+      "reboot.now": "Reboot",
+      "status.checkingTitle": "Checking keybox...",
+      "status.checkingDesc": "Reading active keybox and current manufacturer props.",
+      "card.keybox": "Keybox Check",
+      "card.apps": "Detected Apps",
+      "card.conflicts": "Possible Conflicts",
+      "conflict.intro": "These modules also touch the manufacturer props. If a detector still flags a mismatch, try disabling them one by one.",
+      "conflict.mismatch": "is {value} but should be {mfr}.",
+      "conflict.mismatchHint": "Something changed it after this module. Check the modules listed here, or reboot if you just installed.",
+      "conflict.sets": "Sets",
+      "conflict.mentions": "Mentions",
+      "card.props": "Current Props",
+      "card.log": "Last Boot / Apply Log",
+      "kv.keyboxType": "Keybox type",
+      "kv.rkpMfr": "RKP map[3]",
+      "kv.zygisk": "Zygisk backend",
+      "kv.keystoreModule": "Keystore module",
+      "kv.path": "Path",
+      "common.none": "(none)",
+      "common.notFound": "Not found",
+      "common.empty": "(empty)",
+      "common.missing": "Missing",
+      "common.off": "Off",
+      "common.detector": "Detector",
+      "common.fixed": "Fixed",
+      "common.nonRkp": "Non-RKP",
+      "common.noMap3": "RKP (no map[3])",
+      "common.loading": "Loading installed apps...",
+      "common.system": "System",
+      "apps.cardTitle": "App Whitelist (Excluded from Spoofing)",
+      "apps.desc": "Only installed apps are shown. Turn on an app to keep its real manufacturer (no spoofing). Changes apply on next app restart (no reboot required).",
+      "apps.search": "Search installed package...",
+      "apps.count": "{n} installed ({e} excluded)",
+      "apps.showSystem": "Show system apps",
+      "apps.couldNotList": "Could not list installed apps.",
+      "apps.noMatch": "No matching installed apps.",
+      "apps.noDetectors": "No known detector apps found.",
+      "apps.pixelCam": "Pixel Camera detected, fix applied",
+      "apps.pixelCamWherePixel": "Google Pixel",
+      "apps.pixelCamWhereRom": "Pixel based ROM",
+      "apps.pixelCamSub": "{where}, stock manufacturer kept for the camera",
+      "apps.suggest": "Some of these apps may check ro.product.vendor.manufacturer. If they still flag a mismatch, try turning it on in Settings.",
+      "apps.openSettings": "Open Settings",
+      "banner.zygiskMissing.title": "Zygisk backend missing",
+      "banner.zygiskMissing.desc": "Install ReZygisk, Zygisk Next, BreZygisk, NeoZygisk, or enable Magisk Zygisk for this module to work.",
+      "banner.noKeybox.title": "No keybox.xml found",
+      "banner.noKeybox.desc": "Checked Oh My Keymint, TrickyStore, TrickyStore OSS, TEESimulator and TEESimulator-RS keybox locations.",
+      "banner.nonRkp.title": "Module not required",
+      "banner.nonRkp.desc": "Your active keybox is not an RKP keybox (no RKP provisioning extension found). You do not need this module for it, and nothing will be changed.",
+      "banner.noMap3.title": "Module not required",
+      "banner.noMap3.desc": "RKP keybox detected, but it has no map[3] manufacturer field. Nothing will be changed.",
+      "banner.active.title": "Active via {zygisk} ({mfr})",
+      "banner.active.desc": "RKP manufacturer applied globally; Zygisk restores stock manufacturer for Pixel Camera and whitelisted apps only.",
+      "banner.couldNotRead.title": "Could not read module status",
+      "banner.couldNotRead.desc": "Open this WebUI from KernelSU / APatch Manager.",
+      "banner.disabled.title": "Keystore module disabled",
+      "banner.disabled.desc": "The keystore module is installed but disabled. Enable it, then reopen this page.",
+      "settings.zygiskCard": "Zygisk Props",
+      "settings.vendor.title": "Spoof ro.product.vendor.manufacturer",
+      "settings.vendor.desc": "Off by default. Only turn this on if a detector still flags a vendor manufacturer mismatch. Pixel Camera still gets the stock value back when it is detected.",
+      "settings.stock.title": "Keep global ro.product.manufacturer stock",
+      "settings.stock.desc": "Off by default. Turn this on if a DenyList/Unmount banking or UPI app breaks when global manufacturer is modified. Keeps global manufacturer stock and uses stealth Zygisk spoofing on non-whitelisted apps instead (requires reboot).",
+      "settings.debugCard": "Debug Logging",
+      "settings.debug.title": "Enable debug log",
+      "settings.debug.desc": "Logs the detected keystore module, Zygisk backend, keybox and prop state, package listing diagnostics, and per-app Zygisk actions to /data/adb/rkp_mfr_auto.log. Off by default.",
+      "log.empty": "Debug log is empty.",
+      "settings.langCard": "Language",
+      "settings.lang.desc": "Follow the system language, or pick one manually.",
+      "lang.system": "System",
+      "lang.zh": "简体中文",
+      "lang.en": "English",
+      "settings.themeCard": "Color Theme",
+      "settings.theme.desc": "Choose how this WebUI looks.",
+      "theme.system": "System",
+      "theme.light": "Light",
+      "theme.dark": "Dark",
+      "theme.amoled": "AMOLED",
+      "settings.linksCard": "Links",
+      "settings.links.desc": "Open project source or author profile in your browser.",
+      "nav.home": "Home",
+      "nav.apps": "Apps",
+      "nav.settings": "Settings",
+      "toast.theme": "Theme updated. No reboot required.",
+      "toast.savedReboot": "Saved. Waiting for reboot to take effect.",
+      "toast.saveFailed": "Failed to save setting.",
+      "toast.savedNoReboot": "Saved. No reboot required.",
+      "toast.wlSaved": "Saved. Restart app to apply. No reboot required.",
+      "toast.wlFailed": "Failed to save whitelist.",
+      "toast.rebooting": "Rebooting...",
+      "toast.snapshot": "Diagnostic snapshot captured.",
+      "toast.exported": "Saved to {path}",
+      "toast.exportedPrivate": "Saved to {path} (root only)",
+      "toast.exportFailed": "Failed to export log.",
+      "toast.logRefreshed": "Log refreshed.",
+      "toast.logCopied": "Log copied.",
+      "toast.logEmpty": "Log is empty.",
+      "toast.copyFailed": "Copy failed. File: /data/adb/rkp_mfr_auto.log",
+      "toast.logCleared": "Log cleared.",
+      "toast.hotApplied": "Hot-applied.",
+      "toast.hotFailed": "Hot-apply failed.",
+      "toast.refreshed": "Refreshed",
+      "toast.langUpdated": "Language updated.",
+      "warn.title": "Compatibility notes",
+      "warn.multi_module": "More than one keystore module is enabled. They hook the same keystore path and may conflict; keep only one active.",
+      "warn.mfr_conflict": "The keyboxes in use declare different RKP manufacturers ({mfrs}). Only the active module's manufacturer can be matched globally.",
+      "warn.teesim_mfr_override": "TEESimulator config.json sets a manufacturer override that differs from the keybox map[3]. Attestation may report a different name than the spoofed property.",
+      "warn.bad_mfr": "The keybox map[3] value contains unsupported characters and was ignored.",
+      "warn.module_disabled": "The keystore module is installed but disabled. Enable it to use this module.",
+      "warn.unknown_setup": "No supported keystore module was detected; a keybox was found by path only."
+    },
+    zh: {
+      "app.title": "RKP 厂商自动匹配",
+      "btn.hotApply": "立即应用",
+      "btn.refresh": "刷新",
+      "btn.refreshLog": "刷新",
+      "btn.copy": "复制",
+      "btn.clear": "清除",
+      "btn.capture": "抓取快照",
+      "btn.export": "导出日志",
+      "btn.exportPublic": "保存到下载目录",
+      "btn.saveAnyway": "仍然保存",
+      "btn.cancel": "取消",
+      "export.warn": "导出内容包含设备属性、已安装模块、包名和调试日志。下载目录中的文件可能被具有存储权限的其他应用读取。",
+      "btn.repo": "GitHub 仓库",
+      "btn.profile": "GitHub 主页（@Najip）",
+      "reboot.title": "等待重启",
+      "reboot.desc": "你修改了需要重启才能生效的设置。",
+      "reboot.now": "重启",
+      "status.checkingTitle": "正在检查密钥库…",
+      "status.checkingDesc": "正在读取当前密钥库与厂商属性。",
+      "card.keybox": "密钥库检查",
+      "card.apps": "检测到的应用",
+      "card.conflicts": "可能的冲突",
+      "conflict.intro": "以下模块也会修改厂商属性。如果检测器仍报告不一致，请逐个禁用排查。",
+      "conflict.mismatch": "当前为 {value}，但应为 {mfr}。",
+      "conflict.mismatchHint": "在本模块之后有程序修改了它。请检查下面列出的模块，或重启后再看。",
+      "conflict.sets": "设置",
+      "conflict.mentions": "提及",
+      "card.props": "当前属性",
+      "card.log": "上次启动 / 应用日志",
+      "kv.keyboxType": "密钥库类型",
+      "kv.rkpMfr": "RKP map[3]",
+      "kv.zygisk": "Zygisk 后端",
+      "kv.keystoreModule": "密钥库模块",
+      "kv.path": "路径",
+      "common.none": "（无）",
+      "common.notFound": "未找到",
+      "common.empty": "（空）",
+      "common.missing": "缺失",
+      "common.off": "关闭",
+      "common.detector": "检测器",
+      "common.fixed": "已修复",
+      "common.nonRkp": "非 RKP",
+      "common.noMap3": "RKP（无 map[3]）",
+      "common.loading": "正在加载已安装应用…",
+      "common.system": "系统",
+      "apps.cardTitle": "应用白名单（不进行伪装）",
+      "apps.desc": "仅显示已安装的应用。开启某个应用即可保留其真实厂商（不伪装）。更改在应用下次启动时生效（无需重启）。",
+      "apps.search": "搜索已安装的包名…",
+      "apps.count": "已安装 {n} 个（已排除 {e} 个）",
+      "apps.showSystem": "显示系统应用",
+      "apps.couldNotList": "无法列出已安装的应用。",
+      "apps.noMatch": "没有匹配的已安装应用。",
+      "apps.noDetectors": "未发现已知的检测器应用。",
+      "apps.pixelCam": "检测到 Pixel 相机，已应用修复",
+      "apps.pixelCamWherePixel": "Google Pixel",
+      "apps.pixelCamWhereRom": "基于 Pixel 的 ROM",
+      "apps.pixelCamSub": "{where}，已为相机保留原始厂商",
+      "apps.suggest": "其中一些应用可能会检查 ro.product.vendor.manufacturer。如果它们仍报告不匹配，请在设置中尝试开启该项。",
+      "apps.openSettings": "打开设置",
+      "banner.zygiskMissing.title": "缺少 Zygisk 后端",
+      "banner.zygiskMissing.desc": "请安装 ReZygisk、Zygisk Next、BreZygisk、NeoZygisk，或启用 Magisk Zygisk 以使用本模块。",
+      "banner.noKeybox.title": "未找到 keybox.xml",
+      "banner.noKeybox.desc": "已检查 Oh My Keymint、TrickyStore、TrickyStore OSS、TEESimulator 与 TEESimulator-RS 的密钥库位置。",
+      "banner.nonRkp.title": "无需本模块",
+      "banner.nonRkp.desc": "当前使用的密钥库不是 RKP 密钥库（未找到 RKP 配置扩展）。无需本模块，也不会修改任何内容。",
+      "banner.noMap3.title": "无需本模块",
+      "banner.noMap3.desc": "检测到 RKP 密钥库，但其中没有 map[3] 厂商字段。不会修改任何内容。",
+      "banner.active.title": "已生效：{zygisk}（{mfr}）",
+      "banner.active.desc": "RKP 厂商已全局应用；Zygisk 仅为 Pixel 相机和白名单应用恢复原始厂商。",
+      "banner.couldNotRead.title": "无法读取模块状态",
+      "banner.couldNotRead.desc": "请从 KernelSU / APatch 管理器打开此 WebUI。",
+      "banner.disabled.title": "密钥库模块已禁用",
+      "banner.disabled.desc": "密钥库模块已安装但处于禁用状态。请启用后重新打开此页面。",
+      "settings.zygiskCard": "Zygisk 属性",
+      "settings.vendor.title": "伪装 ro.product.vendor.manufacturer",
+      "settings.vendor.desc": "默认关闭。仅当检测器仍报告 vendor 厂商不一致时才需要开启。检测到 Pixel 相机时仍会为其恢复原始值。",
+      "settings.stock.title": "保持全局 ro.product.manufacturer 为原始值",
+      "settings.stock.desc": "默认关闭。若修改全局厂商会导致处于 DenyList/卸载状态的应用（银行、UPI）异常，请开启此项。全局厂商保持原始值，改为对非白名单应用使用隐蔽的 Zygisk 伪装（需要重启）。",
+      "settings.debugCard": "调试日志",
+      "settings.debug.title": "启用调试日志",
+      "settings.debug.desc": "将检测到的密钥库模块、Zygisk 后端、密钥库与属性状态、应用列表诊断信息以及每个应用的 Zygisk 行为记录到 /data/adb/rkp_mfr_auto.log。默认关闭。",
+      "log.empty": "调试日志为空。",
+      "settings.langCard": "语言",
+      "settings.lang.desc": "跟随系统语言，或手动选择。",
+      "lang.system": "跟随系统",
+      "lang.zh": "简体中文",
+      "lang.en": "English",
+      "settings.themeCard": "颜色主题",
+      "settings.theme.desc": "选择此 WebUI 的外观。",
+      "theme.system": "跟随系统",
+      "theme.light": "浅色",
+      "theme.dark": "深色",
+      "theme.amoled": "AMOLED",
+      "settings.linksCard": "链接",
+      "settings.links.desc": "在浏览器中打开项目源码或作者主页。",
+      "nav.home": "首页",
+      "nav.apps": "应用",
+      "nav.settings": "设置",
+      "toast.theme": "主题已更新，无需重启。",
+      "toast.savedReboot": "已保存，重启后生效。",
+      "toast.saveFailed": "保存设置失败。",
+      "toast.savedNoReboot": "已保存，无需重启。",
+      "toast.wlSaved": "已保存。重启应用后生效，无需重启设备。",
+      "toast.wlFailed": "保存白名单失败。",
+      "toast.rebooting": "正在重启…",
+      "toast.snapshot": "已抓取诊断快照。",
+      "toast.exported": "已保存到 {path}",
+      "toast.exportedPrivate": "已保存到 {path}（仅 root 可读）",
+      "toast.exportFailed": "导出日志失败。",
+      "toast.logRefreshed": "日志已刷新。",
+      "toast.logCopied": "日志已复制。",
+      "toast.logEmpty": "日志为空。",
+      "toast.copyFailed": "复制失败。文件：/data/adb/rkp_mfr_auto.log",
+      "toast.logCleared": "日志已清除。",
+      "toast.hotApplied": "已立即应用。",
+      "toast.hotFailed": "立即应用失败。",
+      "toast.refreshed": "已刷新",
+      "toast.langUpdated": "语言已更新。",
+      "warn.title": "兼容性提示",
+      "warn.multi_module": "检测到多个密钥库模块同时启用。它们会挂接同一个 keystore 路径，可能相互冲突，建议只保留一个。",
+      "warn.mfr_conflict": "正在使用的密钥库声明了不同的 RKP 厂商（{mfrs}）。全局只能匹配当前活动模块的厂商。",
+      "warn.teesim_mfr_override": "TEESimulator 的 config.json 设置了与密钥库 map[3] 不同的厂商覆盖值，认证结果可能与被伪装的属性不一致。",
+      "warn.bad_mfr": "密钥库 map[3] 的值包含不支持的字符，已忽略。",
+      "warn.module_disabled": "密钥库模块已安装但处于禁用状态，请启用后再使用本模块。",
+      "warn.unknown_setup": "未检测到受支持的密钥库模块，仅按路径找到了密钥库文件。"
     }
+  };
 
-    function ksuExec(cmd) {
-      return new Promise((resolve) => {
-        if (typeof window.ksu === "undefined" || typeof window.ksu.exec !== "function") {
-          resolve({ errno: 1, stdout: "", stderr: "ksu.exec not available" });
-          return;
-        }
-        const cbName = "__ksu_cb_" + Date.now() + "_" + (++cbCounter);
-        window[cbName] = (errno, stdout, stderr) => {
-          delete window[cbName];
-          resolve({ errno: Number(errno) || 0, stdout: stdout || "", stderr: stderr || "" });
-        };
+  function t(key, vars) {
+    var dict = I18N[lang] || I18N.en;
+    var s = dict[key];
+    if (s === undefined) s = I18N.en[key];
+    if (s === undefined) return key;
+    if (vars) {
+      s = s.replace(/\{(\w+)\}/g, function (m, k) {
+        return (vars[k] === undefined) ? m : String(vars[k]);
+      });
+    }
+    return s;
+  }
+
+  function hasWarn(raw, code) {
+    return (";" + String(raw || "") + ";").indexOf(";" + code + ";") >= 0;
+  }
+
+  function detectSystemLang() {
+    var list = [];
+    if (navigator.languages && navigator.languages.length) {
+      for (var i = 0; i < navigator.languages.length; i++) list.push(navigator.languages[i]);
+    }
+    if (navigator.language) list.push(navigator.language);
+    for (var j = 0; j < list.length; j++) {
+      var v = String(list[j]).toLowerCase();
+      if (v.indexOf("zh") === 0) return "zh";
+      if (v.indexOf("en") === 0) return "en";
+    }
+    return "en";
+  }
+
+  function resolveLang() {
+    if (langMode === "zh" || langMode === "en") return langMode;
+    return detectSystemLang();
+  }
+
+  function applyI18n() {
+    document.documentElement.lang = (lang === "zh") ? "zh-CN" : "en";
+    document.title = t("app.title");
+    var nodes = document.querySelectorAll("[data-i18n]");
+    for (var i = 0; i < nodes.length; i++) {
+      nodes[i].textContent = t(nodes[i].getAttribute("data-i18n"));
+    }
+    var ph = document.querySelectorAll("[data-i18n-placeholder]");
+    for (var j = 0; j < ph.length; j++) {
+      ph[j].setAttribute("placeholder", t(ph[j].getAttribute("data-i18n-placeholder")));
+    }
+  }
+
+  function renderLangPicker() {
+    var btns = document.querySelectorAll("[data-lang-choice]");
+    for (var i = 0; i < btns.length; i++) {
+      btns[i].classList.toggle("active", btns[i].getAttribute("data-lang-choice") === langMode);
+    }
+  }
+
+  function setLanguage(mode, notify) {
+    if (mode !== "system" && mode !== "zh" && mode !== "en") mode = "system";
+    langMode = mode;
+    try { localStorage.setItem(LANG_KEY, mode); } catch (e) {}
+    var next = resolveLang();
+    var changed = next !== lang;
+    lang = next;
+    applyI18n();
+    renderLangPicker();
+    if (changed) {
+      loadStatus();
+      loadDebugLog();
+      if (appsLoaded) loadInstalledApps();
+    }
+    if (notify) showToast(t("toast.langUpdated"));
+  }
+
+  function runScriptCmd(arg) {
+    return 'if [ -x /data/adb/ksu/bin/busybox ]; then /data/adb/ksu/bin/busybox sh "' + SCRIPT_PATH + '" ' + arg + '; else sh "' + SCRIPT_PATH + '" ' + arg + '; fi';
+  }
+
+  function ksuExec(cmd) {
+    return new Promise(function (resolve) {
+      if (typeof window.ksu === "undefined" || typeof window.ksu.exec !== "function") {
+        resolve({ errno: 1, stdout: "", stderr: "ksu.exec not available" });
+        return;
+      }
+      var cbName = "__ksu_cb_" + Date.now() + "_" + (++cbCounter);
+      window[cbName] = function (errno, stdout, stderr) {
+        delete window[cbName];
+        resolve({ errno: Number(errno) || 0, stdout: stdout || "", stderr: stderr || "" });
+      };
+      try {
+        window.ksu.exec(cmd, "{}", cbName);
+      } catch (e) {
+        delete window[cbName];
         try {
-          window.ksu.exec(cmd, "{}", cbName);
-        } catch (e) {
-          delete window[cbName];
-          try {
-            const out = window.ksu.exec(cmd);
-            resolve({ errno: 0, stdout: String(out || ""), stderr: "" });
-          } catch (err) {
-            resolve({ errno: 1, stdout: "", stderr: String(err) });
-          }
+          var out = window.ksu.exec(cmd);
+          resolve({ errno: 0, stdout: String(out || ""), stderr: "" });
+        } catch (err) {
+          resolve({ errno: 1, stdout: "", stderr: String(err) });
         }
+      }
+    });
+  }
+
+  function showToast(msg) {
+    if (typeof window.ksu !== "undefined" && typeof window.ksu.toast === "function") {
+      try { window.ksu.toast(msg); } catch (e) {}
+    }
+    var el = document.getElementById("toast");
+    el.textContent = msg;
+    el.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.classList.remove("show"); }, 2800);
+  }
+
+  function switchTab(target) {
+    var navs = document.querySelectorAll(".nav-btn");
+    for (var i = 0; i < navs.length; i++) {
+      navs[i].classList.toggle("active", navs[i].getAttribute("data-tab") === target);
+    }
+    var panels = document.querySelectorAll(".tab-panel");
+    for (var j = 0; j < panels.length; j++) {
+      panels[j].classList.toggle("active", panels[j].id === "tab-" + target);
+    }
+    if (target === "apps" && !appsLoaded) {
+      loadInstalledApps();
+    }
+  }
+
+  function applyTheme(theme, notify) {
+    var valid = ["system", "light", "dark", "amoled"];
+    var chosen = valid.indexOf(theme) >= 0 ? theme : "system";
+    document.documentElement.setAttribute("data-theme", chosen);
+    try { localStorage.setItem(THEME_KEY, chosen); } catch (e) {}
+    var btns = document.querySelectorAll(".theme-opt[data-theme-choice]");
+    for (var i = 0; i < btns.length; i++) {
+      btns[i].classList.toggle("active", btns[i].getAttribute("data-theme-choice") === chosen);
+    }
+    if (notify) {
+      showToast(t("toast.theme"));
+    }
+  }
+
+  function setBanner(kind, title, desc) {
+    var banner = document.getElementById("statusBanner");
+    banner.className = "status-banner " + kind;
+    document.getElementById("statusTitle").textContent = title;
+    document.getElementById("statusDesc").textContent = desc;
+  }
+
+  function parseKV(text) {
+    var out = {};
+    String(text || "").split("\n").forEach(function (line) {
+      var idx = line.indexOf("=");
+      if (idx > 0) {
+        out[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+      }
+    });
+    return out;
+  }
+
+  function parseAppList(raw) {
+    if (!raw) return [];
+    return raw.split(";").filter(Boolean).map(function (item) {
+      var parts = item.split("|");
+      return { label: parts[0] || item, pkg: parts[1] || "" };
+    });
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function renderApps(detectedApps, pixelCam, pixelCamReason) {
+    var box = document.getElementById("appsContent");
+    var html = "";
+
+    if (detectedApps.length === 0 && !pixelCam) {
+      box.innerHTML = '<div class="setting-desc">' + escapeHtml(t("apps.noDetectors")) + "</div>";
+      return;
+    }
+
+    if (detectedApps.length > 0) {
+      html += '<div class="app-list">';
+      detectedApps.forEach(function (a) {
+        html += '<div class="app-item"><div><div class="app-name">' + escapeHtml(a.label) +
+          '</div><div class="app-pkg">' + escapeHtml(a.pkg) + '</div></div><span class="pill info">' +
+          escapeHtml(t("common.detector")) + "</span></div>";
       });
+      html += "</div>";
     }
 
-    function showToast(msg) {
-      if (typeof window.ksu !== "undefined" && typeof window.ksu.toast === "function") {
-        try { window.ksu.toast(msg); } catch (_) {}
-      }
-      const el = document.getElementById("toast");
-      el.textContent = msg;
-      el.classList.add("show");
-      clearTimeout(toastTimer);
-      toastTimer = setTimeout(() => el.classList.remove("show"), 2800);
+    if (pixelCam) {
+      var where = pixelCamReason === "pixel" ? t("apps.pixelCamWherePixel") : t("apps.pixelCamWhereRom");
+      html += '<div class="app-list" style="margin-top:8px;"><div class="app-item"><div><div class="app-name">' +
+        escapeHtml(t("apps.pixelCam")) + '</div><div class="app-pkg">' +
+        escapeHtml(t("apps.pixelCamSub", { where: where })) +
+        '</div></div><span class="pill ok">' + escapeHtml(t("common.fixed")) + "</span></div></div>";
     }
 
-    function switchTab(target) {
-      document.querySelectorAll(".nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === target));
-      document.querySelectorAll(".tab-panel").forEach((p) => p.classList.toggle("active", p.id === "tab-" + target));
-      if (target === "apps" && !appsLoaded) {
-        loadInstalledApps();
-      }
+    box.innerHTML = html;
+  }
+
+  function renderConflicts(raw, mismatchRaw, rkpMfr) {
+    var card = document.getElementById("conflictCard");
+    var box = document.getElementById("conflictContent");
+    var items = String(raw || "").split(";").filter(Boolean).map(function (it) {
+      var p = it.split("|");
+      return { mod: p[0] || "", where: p[1] || "", kind: p[2] || "", text: p.slice(3).join("|") };
+    }).filter(function (c) { return c.mod; });
+    var mism = String(mismatchRaw || "").split(";").filter(Boolean);
+
+    if (items.length === 0 && mism.length === 0) {
+      card.style.display = "none";
+      box.innerHTML = "";
+      return;
     }
 
-    function applyTheme(theme, notify) {
-      const valid = ["system", "light", "dark", "amoled"];
-      const chosen = valid.includes(theme) ? theme : "system";
-      document.documentElement.setAttribute("data-theme", chosen);
-      try { localStorage.setItem(THEME_KEY, chosen); } catch (_) {}
-      document.querySelectorAll(".theme-opt").forEach((btn) => {
-        btn.classList.toggle("active", btn.dataset.themeChoice === chosen);
+    var html = "";
+    if (mism.length > 0) {
+      html += '<div class="suggest-box caution"><div>';
+      mism.forEach(function (m) {
+        var i = m.indexOf("=");
+        var prop = i >= 0 ? m.slice(0, i) : m;
+        var val = i >= 0 ? m.slice(i + 1) : "";
+        html += "<code>" + escapeHtml(prop) + "</code> " +
+          escapeHtml(t("conflict.mismatch", { value: val || t("common.empty"), mfr: rkpMfr })) + "<br>";
       });
-      if (notify) {
-        showToast("Theme updated. No reboot required.");
-      }
+      html += escapeHtml(t("conflict.mismatchHint")) + "</div></div>";
     }
-
-    function setBanner(kind, title, desc) {
-      const banner = document.getElementById("statusBanner");
-      banner.className = "status-banner " + kind;
-      document.getElementById("statusTitle").textContent = title;
-      document.getElementById("statusDesc").textContent = desc;
-    }
-
-    function parseKV(text) {
-      const out = {};
-      text.split("\n").forEach((line) => {
-        const idx = line.indexOf("=");
-        if (idx > 0) {
-          out[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
-        }
+    if (items.length > 0) {
+      html += '<div style="margin:8px 0;">' + escapeHtml(t("conflict.intro")) + '</div><div class="app-list">';
+      items.forEach(function (c) {
+        var pill = c.kind === "sets"
+          ? '<span class="pill warn">' + escapeHtml(t("conflict.sets")) + "</span>"
+          : '<span class="pill info">' + escapeHtml(t("conflict.mentions")) + "</span>";
+        html += '<div class="app-item"><div style="min-width:0;flex:1;"><div class="app-name">' +
+          escapeHtml(c.mod) + '</div><div class="app-pkg">' + escapeHtml(c.where) +
+          '</div><div class="app-pkg" style="word-break:break-all;">' + escapeHtml(c.text) +
+          "</div></div>" + pill + "</div>";
       });
-      return out;
+      html += "</div>";
     }
+    box.innerHTML = html;
+    card.style.display = "";
+  }
 
-    function parseAppList(raw) {
-      if (!raw) return [];
-      return raw.split(";").filter(Boolean).map((item) => {
-        const parts = item.split("|");
-        return { label: parts[0] || item, pkg: parts[1] || "" };
-      });
+  function renderWarnings(raw, mfrs) {
+    var box = document.getElementById("compatWarn");
+    var codes = String(raw || "").split(";").filter(Boolean);
+    var items = [];
+    for (var i = 0; i < codes.length; i++) {
+      var key = "warn." + codes[i];
+      var text = t(key);
+      if (text === key) continue;
+      if (codes[i] === "mfr_conflict") {
+        text = t(key, { mfrs: String(mfrs || "").split(";").join(", ") });
+      }
+      items.push('<div class="warn-item">' + escapeHtml(text) + "</div>");
     }
-
-    function escapeHtml(s) {
-      return String(s).replace(/[&<>"']/g, (c) => ({
-        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
-      }[c]));
+    if (!items.length) {
+      box.style.display = "none";
+      box.innerHTML = "";
+      return;
     }
+    box.innerHTML = '<div class="warn-title">' + escapeHtml(t("warn.title")) + "</div>" + items.join("");
+    box.style.display = "flex";
+  }
 
-    function renderApps(detectedApps, pixelCam, pixelCamReason, isRkp, rkpMfr, spoofVendor) {
-      const box = document.getElementById("appsContent");
-      let html = "";
-
-      if (detectedApps.length === 0 && !pixelCam) {
-        box.innerHTML = '<div class="setting-desc">No known detector apps found.</div>';
-        return;
-      }
-
-      if (detectedApps.length > 0) {
-        html += '<div class="app-list">';
-        detectedApps.forEach((a) => {
-          html += `<div class="app-item"><div><div class="app-name">${escapeHtml(a.label)}</div><div class="app-pkg">${escapeHtml(a.pkg)}</div></div><span class="pill info">Detector</span></div>`;
-        });
-        html += '</div>';
-      }
-
-      if (pixelCam) {
-        const where = pixelCamReason === "pixel" ? "Google Pixel" : "Pixel based ROM";
-        html += `<div class="app-list" style="margin-top:8px;"><div class="app-item"><div><div class="app-name">Pixel Camera detected, fix applied</div><div class="app-pkg">${where}, stock manufacturer kept for the camera</div></div><span class="pill ok">Fixed</span></div></div>`;
-      }
-
-      /* Vendor prop toggle hidden from Settings for now
-      if (isRkp && rkpMfr && detectedApps.length > 0 && !spoofVendor) {
-        html += `
-          <div class="suggest-box">
-            <div>Some of these apps may check <code>ro.product.vendor.manufacturer</code>. If they still flag a mismatch, try turning it on in Settings.</div>
-            <button type="button" class="link-btn" id="goSettingsBtn">Open Settings</button>
-          </div>
-        `;
-      }
-      */
-
-      box.innerHTML = html;
-      const goBtn = document.getElementById("goSettingsBtn");
-      if (goBtn) {
-        goBtn.addEventListener("click", () => switchTab("settings"));
-      }
-    }
-
-    function renderConflicts(raw, mismatchRaw, rkpMfr) {
-      const card = document.getElementById("conflictCard");
-      const box = document.getElementById("conflictContent");
-      const items = (raw || "").split(";").filter(Boolean).map((it) => {
-        const p = it.split("|");
-        return { mod: p[0] || "", where: p[1] || "", kind: p[2] || "", text: p.slice(3).join("|") };
-      }).filter((c) => c.mod);
-      const mism = (mismatchRaw || "").split(";").filter(Boolean);
-      if (items.length === 0 && mism.length === 0) {
-        card.style.display = "none";
-        box.innerHTML = "";
-        return;
-      }
-      let html = "";
-      if (mism.length > 0) {
-        html += '<div class="suggest-box caution"><div>';
-        mism.forEach((m) => {
-          const i = m.indexOf("=");
-          html += `<code>${escapeHtml(m.slice(0, i))}</code> is <b>${escapeHtml(m.slice(i + 1) || "(empty)")}</b> but should be <b>${escapeHtml(rkpMfr)}</b>.<br>`;
-        });
-        html += "Something changed it after this module. Check the modules listed here, or reboot if you just installed.</div></div>";
-      }
-      if (items.length > 0) {
-        html += '<div style="margin:8px 0;">These modules also touch the manufacturer props. If a detector still flags a mismatch, try disabling them one by one.</div><div class="app-list">';
-        items.forEach((c) => {
-          const pill = c.kind === "sets" ? '<span class="pill warn">Sets</span>' : '<span class="pill info">Mentions</span>';
-          html += `<div class="app-item"><div style="min-width:0;flex:1;"><div class="app-name">${escapeHtml(c.mod)}</div><div class="app-pkg">${escapeHtml(c.where)}</div><div class="app-pkg" style="word-break:break-all;">${escapeHtml(c.text)}</div></div>${pill}</div>`;
-        });
-        html += "</div>";
-      }
-      box.innerHTML = html;
-      card.style.display = "";
-    }
-
-    async function loadStatus() {
-      const res = await ksuExec(runScriptCmd("--status"));
+  function loadStatus() {
+    return ksuExec(runScriptCmd("--status")).then(function (res) {
       if (res.errno !== 0 && !res.stdout) {
-        setBanner("warn", "Could not read module status", res.stderr || "Open this WebUI from KernelSU / APatch Manager.");
+        setBanner("warn", t("banner.couldNotRead.title"), res.stderr || t("banner.couldNotRead.desc"));
         return;
       }
 
-      const data = parseKV(res.stdout);
-      const kbPath = data.KEYBOX_PATH || "";
-      const isRkp = data.IS_RKP === "1";
-      const rkpMfr = data.RKP_MFR || "";
-      const curMfr = data.CUR_MFR || "(empty)";
-      const curVendor = data.CUR_VENDOR_MFR || "(empty)";
-      const curAttest = data.CUR_ATTEST_MFR || "(empty)";
-      const spoofVendor = data.SPOOF_VENDOR_MFR === "1";
-      const stockGlobal = data.STOCK_GLOBAL_MFR === "1";
-      const debugLog = data.DEBUG_LOG === "1";
-      const zygiskBackend = data.ZYGISK_BACKEND || "";
-      const pendingReboot = data.PENDING_REBOOT === "1";
-      const detectedApps = parseAppList(data.DETECTED_APPS || "");
-      const pixelCam = data.PIXEL_CAM === "1";
-      const pixelCamReason = data.PIXEL_CAM_REASON || "";
+      var data = parseKV(res.stdout);
+      var kbPath = data.KEYBOX_PATH || "";
+      var isRkp = data.IS_RKP === "1";
+      var rkpMfr = data.RKP_MFR || "";
+      var curMfr = data.CUR_MFR || t("common.empty");
+      var curVendor = data.CUR_VENDOR_MFR || t("common.empty");
+      var curAttest = data.CUR_ATTEST_MFR || t("common.empty");
+      var debugLog = data.DEBUG_LOG === "1";
+      var zygiskBackend = data.ZYGISK_BACKEND || "";
+      var pendingReboot = data.PENDING_REBOOT === "1";
+      var detectedApps = parseAppList(data.DETECTED_APPS || "");
+      var pixelCam = data.PIXEL_CAM === "1";
+      var pixelCamReason = data.PIXEL_CAM_REASON || "";
+      var ksModule = data.KEYSTORE_MODULE || "";
 
       document.getElementById("rebootBanner").classList.toggle("show", pendingReboot);
-      document.getElementById("kbPath").textContent = kbPath || "Not found";
-      document.getElementById("kbMfr").textContent = rkpMfr || "(none)";
+      document.getElementById("kbPath").textContent = kbPath || t("common.notFound");
+      document.getElementById("kbMfr").textContent = rkpMfr || t("common.none");
+      document.getElementById("ksModuleVal").textContent = ksModule || t("common.none");
       document.getElementById("zygiskVal").innerHTML = zygiskBackend
-        ? `<span class="pill ok">${escapeHtml(zygiskBackend)}</span>`
-        : '<span class="pill warn">Missing</span>';
+        ? '<span class="pill ok">' + escapeHtml(zygiskBackend) + "</span>"
+        : '<span class="pill warn">' + escapeHtml(t("common.missing")) + "</span>";
       document.getElementById("propMfr").textContent = curMfr;
       document.getElementById("propVendorMfr").textContent = curVendor;
       document.getElementById("propAttestMfr").textContent = curAttest;
-      document.getElementById("bootLog").textContent = data.LAST_LOG || "No log yet.";
-      // const vendorEl = document.getElementById("vendorToggle");
-      // if (vendorEl) vendorEl.checked = spoofVendor;
-      // const stockEl = document.getElementById("stockGlobalToggle");
-      // if (stockEl) stockEl.checked = stockGlobal;
+      document.getElementById("bootLog").textContent = data.LAST_LOG || "-";
       document.getElementById("debugLogToggle").checked = debugLog;
       loadDebugLog();
-
-      renderApps(detectedApps, pixelCam, pixelCamReason, isRkp, rkpMfr, spoofVendor);
+      renderWarnings(data.WARNINGS || "", data.RKP_MFRS || "");
+      renderApps(detectedApps, pixelCam, pixelCamReason);
       renderConflicts(data.CONFLICTS || "", data.PROP_MISMATCH || "", rkpMfr);
 
-      const kbTypeEl = document.getElementById("kbType");
+      var kbTypeEl = document.getElementById("kbType");
       if (!zygiskBackend) {
         kbTypeEl.innerHTML = isRkp ? '<span class="pill ok">RKP</span>' : '<span class="pill info">-</span>';
-        setBanner(
-          "warn",
-          "Zygisk backend missing",
-          "Install ReZygisk, Zygisk Next, BreZygisk, NeoZygisk, or enable Magisk Zygisk for this module to work."
-        );
+        setBanner("warn", t("banner.zygiskMissing.title"), t("banner.zygiskMissing.desc"));
       } else if (!kbPath) {
-        kbTypeEl.innerHTML = '<span class="pill warn">Missing</span>';
-        setBanner("warn", "No keybox.xml found", "Checked OMK (/data/misc/keystore/omk), TEESimulator (/data/adb/teesim), and TrickyStore (/data/adb/tricky_store).");
+        kbTypeEl.innerHTML = '<span class="pill warn">' + escapeHtml(t("common.missing")) + "</span>";
+        if (hasWarn(data.WARNINGS, "module_disabled")) {
+          setBanner("warn", t("banner.disabled.title"), t("banner.disabled.desc"));
+        } else {
+          setBanner("warn", t("banner.noKeybox.title"), t("banner.noKeybox.desc"));
+        }
       } else if (!isRkp) {
-        kbTypeEl.innerHTML = '<span class="pill info">Non-RKP</span>';
-        setBanner(
-          "info",
-          "Module not required",
-          "Your active keybox is not an RKP keybox (no RKP provisioning extension found). You don't need this module for it, and nothing will be changed."
-        );
+        kbTypeEl.innerHTML = '<span class="pill info">' + escapeHtml(t("common.nonRkp")) + "</span>";
+        setBanner("info", t("banner.nonRkp.title"), t("banner.nonRkp.desc"));
       } else if (!rkpMfr) {
-        kbTypeEl.innerHTML = '<span class="pill info">RKP (no map[3])</span>';
-        setBanner(
-          "info",
-          "Module not required",
-          "RKP keybox detected, but it has no map[3] manufacturer field. Nothing will be changed."
-        );
+        kbTypeEl.innerHTML = '<span class="pill info">' + escapeHtml(t("common.noMap3")) + "</span>";
+        setBanner("info", t("banner.noMap3.title"), t("banner.noMap3.desc"));
       } else {
         kbTypeEl.innerHTML = '<span class="pill ok">RKP</span>';
-        setBanner(
-          "ok",
-          `Active via ${zygiskBackend} (${rkpMfr})`,
-          "RKP manufacturer applied globally; Zygisk restores stock manufacturer for Pixel Camera and whitelisted apps only."
-        );
+        setBanner("ok", t("banner.active.title", { zygisk: zygiskBackend, mfr: rkpMfr }), t("banner.active.desc"));
       }
-    }
+    });
+  }
 
-    async function loadInstalledApps() {
-      const container = document.getElementById("whitelistContainer");
-      const countEl = document.getElementById("appCountText");
-      const showSys = document.getElementById("showSystemToggle").checked;
-      countEl.textContent = "Loading installed apps...";
-      const res = await ksuExec(runScriptCmd(showSys ? "--list-apps all" : "--list-apps"));
+  function loadInstalledApps() {
+    var container = document.getElementById("whitelistContainer");
+    var countEl = document.getElementById("appCountText");
+    var showSys = document.getElementById("showSystemToggle").checked;
+    countEl.textContent = t("common.loading");
+    return ksuExec(runScriptCmd(showSys ? "--list-apps all" : "--list-apps")).then(function (res) {
       if (res.errno !== 0 && !res.stdout) {
-        countEl.textContent = "Could not list installed apps.";
+        countEl.textContent = t("apps.couldNotList");
         container.innerHTML = "";
         return;
       }
       appsLoaded = true;
-      installedApps = res.stdout.split("\n").filter(Boolean).map((line) => {
-        const parts = line.split("|");
-        return {
-          pkg: parts[0] || "",
-          type: parts[1] || "user",
-          excluded: parts[2] === "1"
-        };
-      }).filter((a) => a.pkg);
+      installedApps = res.stdout.split("\n").filter(Boolean).map(function (line) {
+        var parts = line.split("|");
+        return { pkg: parts[0] || "", type: parts[1] || "user", excluded: parts[2] === "1" };
+      }).filter(function (a) { return a.pkg; });
 
-      // Sort: excluded first, then alphabetical
-      installedApps.sort((a, b) => {
+      installedApps.sort(function (a, b) {
         if (a.excluded !== b.excluded) return a.excluded ? -1 : 1;
         return a.pkg.localeCompare(b.pkg);
       });
       renderWhitelist();
+    });
+  }
+
+  function renderWhitelist() {
+    var container = document.getElementById("whitelistContainer");
+    var countEl = document.getElementById("appCountText");
+    var q = (document.getElementById("appSearch").value || "").trim().toLowerCase();
+    var filtered = installedApps.filter(function (a) {
+      return !q || a.pkg.toLowerCase().indexOf(q) >= 0;
+    });
+
+    var excludedCount = 0;
+    for (var i = 0; i < installedApps.length; i++) {
+      if (installedApps[i].excluded) excludedCount++;
+    }
+    countEl.textContent = t("apps.count", { n: filtered.length, e: excludedCount });
+
+    if (filtered.length === 0) {
+      container.innerHTML = '<div class="setting-desc">' + escapeHtml(t("apps.noMatch")) + "</div>";
+      return;
     }
 
-    function renderWhitelist() {
-      const container = document.getElementById("whitelistContainer");
-      const countEl = document.getElementById("appCountText");
-      const q = (document.getElementById("appSearch").value || "").trim().toLowerCase();
-      const filtered = q
-        ? installedApps.filter((a) => a.pkg.toLowerCase().includes(q))
-        : installedApps;
+    var html = "";
+    filtered.forEach(function (a) {
+      var badge = a.type === "sys" ? '<span class="pill info">' + escapeHtml(t("common.system")) + "</span>" : "";
+      html += '<div class="app-item"><div style="min-width:0;flex:1;">' +
+        '<div class="app-pkg" style="color:var(--text);font-size:12px;">' + escapeHtml(a.pkg) + "</div>" +
+        (badge ? '<div style="margin-top:4px;">' + badge + "</div>" : "") +
+        '</div><label class="switch"><input type="checkbox" class="wl-toggle" data-pkg="' +
+        escapeHtml(a.pkg) + '"' + (a.excluded ? " checked" : "") + " />" +
+        '<span class="slider"></span></label></div>';
+    });
+    container.innerHTML = html;
+  }
 
-      const excludedCount = installedApps.filter((a) => a.excluded).length;
-      countEl.textContent = `${filtered.length} installed (${excludedCount} excluded)`;
-
-      if (filtered.length === 0) {
-        container.innerHTML = '<div class="setting-desc">No matching installed apps.</div>';
-        return;
-      }
-
-      let html = "";
-      filtered.forEach((a) => {
-        const badge = a.type === "sys" ? '<span class="pill info">System</span>' : "";
-        html += `
-          <div class="app-item">
-            <div style="min-width:0;flex:1;">
-              <div class="app-pkg" style="color:var(--text);font-size:12px;">${escapeHtml(a.pkg)}</div>
-              ${badge ? `<div style="margin-top:4px;">${badge}</div>` : ""}
-            </div>
-            <label class="switch">
-              <input type="checkbox" class="wl-toggle" data-pkg="${escapeHtml(a.pkg)}" ${a.excluded ? "checked" : ""} />
-              <span class="slider"></span>
-            </label>
-          </div>
-        `;
-      });
-      container.innerHTML = html;
-    }
-
-    async function saveExcludeList() {
-      const custom = installedApps
-        .filter((a) => a.excluded)
-        .map((a) => a.pkg)
-        .filter((p) => /^[a-zA-Z0-9._-]+$/.test(p));
-      const payload = custom.join("\\n") + (custom.length ? "\\n" : "");
-      const res = await ksuExec(`printf '${payload}' > "${EXCLUDE_PATH}" && chmod 0644 "${EXCLUDE_PATH}" 2>/dev/null`);
+  function saveExcludeList() {
+    var custom = installedApps
+      .filter(function (a) { return a.excluded; })
+      .map(function (a) { return a.pkg; })
+      .filter(function (p) { return /^[a-zA-Z0-9._-]+$/.test(p); });
+    var payload = custom.join("\\n") + (custom.length ? "\\n" : "");
+    return ksuExec('printf \'' + payload + '\' > "' + EXCLUDE_PATH + '" && chmod 0644 "' + EXCLUDE_PATH + '" 2>/dev/null').then(function (res) {
       if (res.errno === 0) {
-        showToast("Saved. Restart app to apply. No reboot required.");
+        showToast(t("toast.wlSaved"));
       } else {
-        showToast("Failed to save whitelist.");
+        showToast(t("toast.wlFailed"));
       }
       renderWhitelist();
+    });
+  }
+
+  function writeConfig(markReboot) {
+    // The vendor/stock toggles are hidden and forced off in post-fs-data.sh.
+    var spoofVendor = "0";
+    var stockGlobal = "0";
+    var debugLog = document.getElementById("debugLogToggle").checked ? "1" : "0";
+    var cmd = "printf 'SPOOF_VENDOR_MFR=%s\\nSTOCK_GLOBAL_MFR=%s\\nDEBUG_LOG=%s\\n' '" +
+      spoofVendor + "' '" + stockGlobal + "' '" + debugLog + "' > \"" + CONF_PATH +
+      "\" && chmod 0644 \"" + CONF_PATH + "\" 2>/dev/null";
+    if (markReboot) {
+      cmd += " && " + runScriptCmd("--mark-reboot");
     }
+    return ksuExec(cmd);
+  }
 
-    // App whitelist search & system toggle
-    document.getElementById("appSearch").addEventListener("input", renderWhitelist);
-    document.getElementById("showSystemToggle").addEventListener("change", () => loadInstalledApps());
-    document.getElementById("whitelistContainer").addEventListener("change", async (e) => {
-      const cb = e.target.closest(".wl-toggle");
-      if (!cb || cb.disabled) return;
-      const pkg = cb.dataset.pkg;
-      const item = installedApps.find((a) => a.pkg === pkg);
-      if (!item) return;
-      item.excluded = cb.checked;
-      await saveExcludeList();
-    });
-
-    // Tab switching
-    document.querySelectorAll(".nav-btn").forEach((btn) => {
-      btn.addEventListener("click", () => switchTab(btn.dataset.tab));
-    });
-
-    // Reboot button in waiting-for-reboot banner
-    document.getElementById("rebootNowBtn").addEventListener("click", async () => {
-      showToast("Rebooting...");
-      await ksuExec("svc power reboot || reboot");
-    });
-
-    async function writeConfig(markReboot) {
-      // Forced off while toggles are hidden from WebUI
-      const spoofVendor = "0";
-      const stockGlobal = "0";
-      // const spoofVendor = document.getElementById("vendorToggle")?.checked ? "1" : "0";
-      // const stockGlobal = document.getElementById("stockGlobalToggle")?.checked ? "1" : "0";
-      const debugLog = document.getElementById("debugLogToggle").checked ? "1" : "0";
-      let cmd = `printf 'SPOOF_VENDOR_MFR=%s\\nSTOCK_GLOBAL_MFR=%s\\nDEBUG_LOG=%s\\n' '${spoofVendor}' '${stockGlobal}' '${debugLog}' > "${CONF_PATH}" && chmod 0644 "${CONF_PATH}" 2>/dev/null`;
-      if (markReboot) {
-        cmd += ` && ${runScriptCmd("--mark-reboot")}`;
-      }
-      return await ksuExec(cmd);
-    }
-
-    async function loadDebugLog() {
-      const box = document.getElementById("debugLogBox");
-      if (!box) return;
-      const res = await ksuExec(`if [ -f "${DEBUG_LOG_PATH}" ]; then tail -n 100 "${DEBUG_LOG_PATH}"; fi`);
-      const txt = (res.stdout || "").trim();
-      box.textContent = txt || "Debug log is empty.";
+  function loadDebugLog() {
+    var box = document.getElementById("debugLogBox");
+    if (!box) return;
+    return ksuExec('if [ -f "' + DEBUG_LOG_PATH + '" ]; then tail -n 100 "' + DEBUG_LOG_PATH + '"; fi').then(function (res) {
+      var txt = (res.stdout || "").trim();
+      box.textContent = txt || t("log.empty");
       box.scrollTop = box.scrollHeight;
-    }
+    });
+  }
 
-    async function openExternalUrl(url) {
-      const res = await ksuExec(`am start -a android.intent.action.VIEW -d '${url}' >/dev/null 2>&1 || /system/bin/am start -a android.intent.action.VIEW -d '${url}' >/dev/null 2>&1`);
+  function openExternalUrl(url) {
+    return ksuExec("am start -a android.intent.action.VIEW -d '" + url + "' >/dev/null 2>&1 || /system/bin/am start -a android.intent.action.VIEW -d '" + url + "' >/dev/null 2>&1").then(function (res) {
       if (res.errno !== 0) {
-        try { window.open(url, "_blank"); } catch (_) {}
+        try { window.open(url, "_blank"); } catch (e) {}
       }
+    });
+  }
+
+  function refineLangFromSystem() {
+    if (langMode !== "system" || langFromSystem) return;
+    ksuExec("getprop persist.sys.locale; getprop persist.sys.language; getprop ro.product.locale").then(function (res) {
+      if (langMode !== "system" || langFromSystem) return;
+      var lines = String(res.stdout || "").split("\n");
+      var tag = "";
+      for (var i = 0; i < lines.length; i++) {
+        var v = lines[i].replace(/\s+$/, "");
+        if (v) { tag = v; break; }
+      }
+      if (!tag) return;
+      langFromSystem = true;
+      var next = /^zh/i.test(tag) ? "zh" : "en";
+      if (next === lang) return;
+      lang = next;
+      applyI18n();
+      renderLangPicker();
+      loadStatus();
+      loadDebugLog();
+      if (appsLoaded) loadInstalledApps();
+    });
+  }
+
+  document.getElementById("appSearch").addEventListener("input", renderWhitelist);
+  document.getElementById("showSystemToggle").addEventListener("change", function () { loadInstalledApps(); });
+  document.getElementById("whitelistContainer").addEventListener("change", function (e) {
+    var cb = e.target.closest(".wl-toggle");
+    if (!cb || cb.disabled) return;
+    var pkg = cb.getAttribute("data-pkg");
+    var item = null;
+    for (var i = 0; i < installedApps.length; i++) {
+      if (installedApps[i].pkg === pkg) { item = installedApps[i]; break; }
     }
+    if (!item) return;
+    item.excluded = cb.checked;
+    saveExcludeList();
+  });
 
-    /* Hidden for now (forced off in post-fs-data.sh; kept in case needed later)
-    // Vendor manufacturer toggle (requires reboot)
-    document.getElementById("vendorToggle").addEventListener("change", async (e) => {
-      const res = await writeConfig(true);
-      if (res.errno === 0) {
-        document.getElementById("rebootBanner").classList.add("show");
-        showToast("Saved. Waiting for reboot to take effect.");
-        loadStatus();
-      } else {
-        e.target.checked = !e.target.checked;
-        showToast("Failed to save setting.");
-      }
+  var navButtons = document.querySelectorAll(".nav-btn");
+  for (var nb = 0; nb < navButtons.length; nb++) {
+    navButtons[nb].addEventListener("click", function () {
+      switchTab(this.getAttribute("data-tab"));
     });
+  }
 
-    // Stock global manufacturer toggle (requires reboot)
-    document.getElementById("stockGlobalToggle").addEventListener("change", async (e) => {
-      const res = await writeConfig(true);
-      if (res.errno === 0) {
-        document.getElementById("rebootBanner").classList.add("show");
-        showToast("Saved. Waiting for reboot to take effect.");
-        loadStatus();
-      } else {
-        e.target.checked = !e.target.checked;
-        showToast("Failed to save setting.");
-      }
-    });
-    */
+  document.getElementById("rebootNowBtn").addEventListener("click", function () {
+    showToast(t("toast.rebooting"));
+    ksuExec("svc power reboot || reboot");
+  });
 
-    // Debug logging toggle (no reboot required)
-    document.getElementById("debugLogToggle").addEventListener("change", async (e) => {
-      const res = await writeConfig(false);
+  document.getElementById("debugLogToggle").addEventListener("change", function (e) {
+    var el = e.target;
+    writeConfig(false).then(function (res) {
       if (res.errno === 0) {
-        showToast("Saved. No reboot required.");
-        if (e.target.checked) {
-          await ksuExec(`${runScriptCmd("--status")} >/dev/null 2>&1; ${runScriptCmd("--list-apps")} >/dev/null 2>&1`);
+        showToast(t("toast.savedNoReboot"));
+        if (el.checked) {
+          ksuExec(runScriptCmd("--status") + " >/dev/null 2>&1; " + runScriptCmd("--list-apps") + " >/dev/null 2>&1");
         }
         loadDebugLog();
       } else {
-        e.target.checked = !e.target.checked;
-        showToast("Failed to save setting.");
+        el.checked = !el.checked;
+        showToast(t("toast.saveFailed"));
       }
     });
+  });
 
-    document.getElementById("captureLogBtn").addEventListener("click", async () => {
-      if (!document.getElementById("debugLogToggle").checked) {
-        document.getElementById("debugLogToggle").checked = true;
-        await writeConfig(false);
-      }
-      await ksuExec(`${runScriptCmd("--status")} >/dev/null 2>&1; ${runScriptCmd("--list-apps")} >/dev/null 2>&1`);
-      await loadDebugLog();
-      showToast("Diagnostic snapshot captured.");
-    });
-
-    document.getElementById("exportLogBtn").addEventListener("click", async () => {
-      const res = await ksuExec(runScriptCmd("--export-log"));
-      const outPath = (res.stdout || "").trim();
-      if (res.errno === 0 && outPath) {
-        showToast("Saved to " + outPath);
-      } else {
-        showToast((res.stderr || "").trim() || "Failed to export log.");
-      }
-    });
-
-    document.getElementById("refreshLogBtn").addEventListener("click", async () => {
-      await loadDebugLog();
-      showToast("Log refreshed.");
-    });
-
-    document.getElementById("copyLogBtn").addEventListener("click", async () => {
-      const txt = document.getElementById("debugLogBox").textContent || "";
-      if (!txt || txt === "Debug log is empty.") {
-        showToast("Log is empty.");
-        return;
-      }
-      try {
-        await navigator.clipboard.writeText(txt);
-        showToast("Log copied.");
-      } catch (_) {
-        const ta = document.createElement("textarea");
-        ta.value = txt;
-        document.body.appendChild(ta);
-        ta.select();
-        try { document.execCommand("copy"); showToast("Log copied."); } catch (__) { showToast("Copy failed. File: /data/adb/rkp_mfr_auto.log"); }
-        document.body.removeChild(ta);
-      }
-    });
-
-    document.getElementById("clearLogBtn").addEventListener("click", async () => {
-      await ksuExec(`rm -f "${DEBUG_LOG_PATH}"`);
-      await loadDebugLog();
-      showToast("Log cleared.");
-    });
-
-    document.getElementById("openRepoBtn").addEventListener("click", () => openExternalUrl(REPO_URL));
-    document.getElementById("openUserBtn").addEventListener("click", () => openExternalUrl(USER_URL));
-
-    // Theme picker (no reboot required)
-    document.getElementById("themeGrid").addEventListener("click", (e) => {
-      const btn = e.target.closest(".theme-opt");
-      if (!btn) return;
-      applyTheme(btn.dataset.themeChoice, true);
-    });
-
-    // Hot apply
-    document.getElementById("hotApplyBtn").addEventListener("click", async () => {
-      const res = await ksuExec(runScriptCmd("--hot-apply"));
-      const msg = (res.stdout || res.stderr || "").trim();
-      showToast(msg || (res.errno === 0 ? "Hot-applied." : "Hot-apply failed."));
-      loadStatus();
-    });
-
-    // Refresh
-    document.getElementById("refreshBtn").addEventListener("click", () => {
-      loadStatus();
-      showToast("Refreshed");
-    });
-
-    // Init
-    try {
-      applyTheme(localStorage.getItem(THEME_KEY) || "system", false);
-    } catch (_) {
-      applyTheme("system", false);
+  document.getElementById("captureLogBtn").addEventListener("click", function () {
+    var chain = Promise.resolve();
+    if (!document.getElementById("debugLogToggle").checked) {
+      document.getElementById("debugLogToggle").checked = true;
+      chain = writeConfig(false);
     }
+    return chain.then(function () {
+      return ksuExec(runScriptCmd("--status") + " >/dev/null 2>&1; " + runScriptCmd("--list-apps") + " >/dev/null 2>&1");
+    }).then(loadDebugLog).then(function () {
+      showToast(t("toast.snapshot"));
+    });
+  });
+
+  function exportLog(arg, toastKey) {
+    return ksuExec(runScriptCmd(arg)).then(function (res) {
+      var outPath = (res.stdout || "").trim();
+      if (res.errno === 0 && outPath) {
+        showToast(t(toastKey, { path: outPath }));
+      } else {
+        showToast((res.stderr || "").trim() || t("toast.exportFailed"));
+      }
+    });
+  }
+
+  document.getElementById("exportLogBtn").addEventListener("click", function () {
+    return exportLog("--export-log", "toast.exportedPrivate");
+  });
+
+  document.getElementById("exportPublicBtn").addEventListener("click", function () {
+    document.getElementById("exportConfirm").style.display = "flex";
+  });
+
+  document.getElementById("exportConfirmBtn").addEventListener("click", function () {
+    document.getElementById("exportConfirm").style.display = "none";
+    return exportLog("--export-log-public", "toast.exported");
+  });
+
+  document.getElementById("exportCancelBtn").addEventListener("click", function () {
+    document.getElementById("exportConfirm").style.display = "none";
+  });
+
+  document.getElementById("refreshLogBtn").addEventListener("click", function () {
+    loadDebugLog().then(function () { showToast(t("toast.logRefreshed")); });
+  });
+
+  document.getElementById("copyLogBtn").addEventListener("click", function () {
+    var txt = document.getElementById("debugLogBox").textContent || "";
+    if (!txt || txt === t("log.empty")) {
+      showToast(t("toast.logEmpty"));
+      return;
+    }
+    var fallback = function () {
+      var ta = document.createElement("textarea");
+      ta.value = txt;
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand("copy");
+        showToast(t("toast.logCopied"));
+      } catch (e) {
+        showToast(t("toast.copyFailed"));
+      }
+      document.body.removeChild(ta);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(txt).then(function () {
+        showToast(t("toast.logCopied"));
+      }).catch(fallback);
+    } else {
+      fallback();
+    }
+  });
+
+  document.getElementById("clearLogBtn").addEventListener("click", function () {
+    return ksuExec('rm -f "' + DEBUG_LOG_PATH + '"').then(loadDebugLog).then(function () {
+      showToast(t("toast.logCleared"));
+    });
+  });
+
+  document.getElementById("openRepoBtn").addEventListener("click", function () { openExternalUrl(REPO_URL); });
+  document.getElementById("openUserBtn").addEventListener("click", function () { openExternalUrl(USER_URL); });
+
+  document.getElementById("themeGrid").addEventListener("click", function (e) {
+    var btn = e.target.closest(".theme-opt");
+    if (!btn) return;
+    applyTheme(btn.getAttribute("data-theme-choice"), true);
+  });
+
+  document.getElementById("langGrid").addEventListener("click", function (e) {
+    var btn = e.target.closest("[data-lang-choice]");
+    if (!btn) return;
+    setLanguage(btn.getAttribute("data-lang-choice"), true);
+  });
+
+  document.getElementById("hotApplyBtn").addEventListener("click", function () {
+    return ksuExec(runScriptCmd("--hot-apply")).then(function (res) {
+      var msg = (res.stdout || res.stderr || "").trim();
+      showToast(msg || (res.errno === 0 ? t("toast.hotApplied") : t("toast.hotFailed")));
+      loadStatus();
+    });
+  });
+
+  document.getElementById("refreshBtn").addEventListener("click", function () {
     loadStatus();
+    showToast(t("toast.refreshed"));
+  });
+
+  (function init() {
+    try {
+      var stored = localStorage.getItem(LANG_KEY);
+      if (stored) langMode = stored;
+    } catch (e) {}
+    if (langMode !== "system" && langMode !== "zh" && langMode !== "en") langMode = "system";
+    lang = resolveLang();
+    applyI18n();
+    renderLangPicker();
+
+    var theme = "system";
+    try { theme = localStorage.getItem(THEME_KEY) || "system"; } catch (e2) {}
+    applyTheme(theme, false);
+
+    loadStatus();
+    refineLangFromSystem();
+  })();
+})();
   </script>
 </body>
 </html>

@@ -1,10 +1,14 @@
 # Roadmap details
 
-Short notes on what's planned, easiest first. Nothing here is promised, it depends on what detectors do and what I can test on my own phone (only tested with OhMyKeymint).
+Short notes on what's planned, easiest first. Nothing here is promised, it depends on what detectors do and what I can test on my own phone (tested with OhMyKeymint; TrickyStore, TrickyStore OSS, TEESimulator and TEESimulator-RS are detected and their keyboxes are read, but reports from those setups are welcome).
 
 ## Why
 
 Detection of a global `ro.product.manufacturer` change is easy if a detector compares it with the other `ro.product.*.manufacturer` props, `build.prop` or the fingerprint. So the plan is to touch less globally and do more per process.
+
+## 0. Multi keystore provider support (done)
+
+The module now finds the keystore module that is actually enabled (Oh My Keymint, TrickyStore, TrickyStore OSS, TEESimulator, TEESimulator-RS), follows its real keybox (including TEESimulator profiles and `[file.xml]` headers in `target.txt`), and warns about multiple enabled modules or keyboxes that disagree about the manufacturer. Next step would be per-provider quirks, for example reading TEESimulator's profile identity instead of only `map[3]`.
 
 ## 1. Attestation-only test mode (easy)
 

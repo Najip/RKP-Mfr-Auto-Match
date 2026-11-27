@@ -72,15 +72,34 @@ ZYGISK_BACKEND=$(detect_zygisk_backend)
 SPOOF_VENDOR_MFR=0
 STOCK_GLOBAL_MFR=0
 DEBUG_LOG=0
+# Parse the config instead of sourcing it: only the three known 0/1 keys are
+# honoured, so a tampered file cannot execute arbitrary code as root at boot.
 if [ -f "$CONF" ]; then
-  . "$CONF"
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      SPOOF_VENDOR_MFR=0|SPOOF_VENDOR_MFR=1) SPOOF_VENDOR_MFR="${line#*=}" ;;
+      STOCK_GLOBAL_MFR=0|STOCK_GLOBAL_MFR=1) STOCK_GLOBAL_MFR="${line#*=}" ;;
+      DEBUG_LOG=0|DEBUG_LOG=1) DEBUG_LOG="${line#*=}" ;;
+    esac
+  done < "$CONF"
 fi
 [ "$DEBUG_LOG" = "1" ] || DEBUG_LOG=0
-# Force vendor prop and stock global mode off (toggles hidden from WebUI; code kept in case needed later)
-if grep -qE '^(SPOOF_VENDOR_MFR|STOCK_GLOBAL_MFR)=1' "$CONF" 2>/dev/null; then
-  printf 'SPOOF_VENDOR_MFR=0\nSTOCK_GLOBAL_MFR=0\nDEBUG_LOG=%s\n' "$DEBUG_LOG" > "$CONF" 2>/dev/null
-  chmod 0644 "$CONF" 2>/dev/null
+# The vendor/stock prop toggles are hidden from the WebUI and forced off. Only
+# rewrite the config during a boot/apply run: read-only modes (--keybox,
+# --status, --list-apps, --export-log...) must not consume the old value before
+# customize.sh has seen it.
+CONF_NEEDS_RESET=0
+if [ -f "$CONF" ] && grep -qE '^(SPOOF_VENDOR_MFR|STOCK_GLOBAL_MFR)=1' "$CONF" 2>/dev/null; then
+  CONF_NEEDS_RESET=1
 fi
+case "$1" in
+  ""|--hot-apply)
+    if [ "$CONF_NEEDS_RESET" = "1" ]; then
+      printf 'SPOOF_VENDOR_MFR=0\nSTOCK_GLOBAL_MFR=0\nDEBUG_LOG=%s\n' "$DEBUG_LOG" > "$CONF" 2>/dev/null
+      chmod 0644 "$CONF" 2>/dev/null
+    fi
+    ;;
+esac
 SPOOF_VENDOR_MFR=0
 STOCK_GLOBAL_MFR=0
 
@@ -94,8 +113,8 @@ dlog() {
   chmod 0644 "$DEBUG_LOG_FILE" 2>/dev/null
 }
 
-# Read-only check: other enabled modules that set the same manufacturer props.
-# Prints "module|file:line|sets or mentions|text". Nothing gets changed.
+# Read-only check: other enabled modules that set or mention the same props.
+# Prints "module|file:line|sets|mentions|text"; nothing is changed.
 CONFLICT_RE='ro\.product\.(vendor\.)?manufacturer(_for_attestation)?([^._a-zA-Z0-9]|$)'
 scan_conflicts() {
   for d in /data/adb/modules/*; do
@@ -135,21 +154,6 @@ for bin in /data/adb/ksu/bin/resetprop /data/adb/ap/bin/resetprop /data/adb/magi
 done
 [ -n "$RP" ] || RP=$(command -v resetprop 2>/dev/null)
 
-# Collect candidate keybox paths across OMK, TEESimulator (teesim), TrickyStore / TEESimulator-RS
-CANDIDATES="/data/misc/keystore/omk/keybox.xml"
-
-if [ -f /data/adb/teesim/config.json ]; then
-  TEESIM_KB=$(sed -n 's/.*"keybox"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' /data/adb/teesim/config.json | head -n 1)
-  if [ -n "$TEESIM_KB" ]; then
-    case "$TEESIM_KB" in
-      /*) CANDIDATES="$CANDIDATES $TEESIM_KB" ;;
-      *)  CANDIDATES="$CANDIDATES /data/adb/teesim/$TEESIM_KB" ;;
-    esac
-  fi
-fi
-
-CANDIDATES="$CANDIDATES /data/adb/teesim/keybox.xml /data/adb/tricky_store/keybox.xml /data/adb/omk/keybox.xml /data/adb/TEESimulator/keybox.xml"
-
 parse_keybox() {
   awk '
     {
@@ -177,8 +181,10 @@ parse_keybox() {
         }
       }
     }
-  ' "$1" | while IFS= read -r b64; do
-    [ -z "$b64" ] && continue
+  ' "$1" | {
+    rkp_seen=0
+    while IFS= read -r b64; do
+      [ -z "$b64" ] && continue
     res=$(printf '%s\n' "$b64" | base64 -d 2>/dev/null | od -An -tx1 -v | awk '
       function hex2dec(h,    i, c, v) {
         v = 0
@@ -308,38 +314,319 @@ parse_keybox() {
         if (found_rkp) print "RKP:"
       }
     ')
-    case "$res" in
-      RKP:*)
-        printf '%s\n' "$res"
-        break
-        ;;
-    esac
+      case "$res" in
+        RKP:*)
+          m="${res#RKP:}"
+          if [ -n "$m" ]; then
+            printf 'RKP:%s\n' "$m"
+            exit 0
+          fi
+          rkp_seen=1
+          ;;
+      esac
+    done
+    # No certificate carried a manufacturer: report the RKP extension once.
+    if [ "$rkp_seen" = "1" ]; then
+      printf 'RKP:\n'
+    fi
+    exit 0
+  }
+}
+
+# ---------------------------------------------------------------------------
+# Keystore provider detection and keybox discovery
+#
+# Supported providers and where they keep the active keybox:
+#   Oh My Keymint    id=oh_my_keymint  /data/misc/keystore/omk/keybox.xml
+#   TrickyStore      id=tricky_store   /data/adb/tricky_store/keybox.xml
+#   TrickyStore OSS  id=tricky_store   /data/adb/tricky_store/keybox.xml (+ [file.xml] in target.txt)
+#   TEESimulator-RS  id=tricky_store   /data/adb/tricky_store/keybox.xml (+ [file.xml] in target.txt)
+#   TEESimulator     id=teesim         /data/adb/teesim/<keybox from config.json profiles>
+#   Unknown / legacy                   /data/adb/TEESimulator/keybox.xml, /data/adb/omk/keybox.xml
+#
+# A keybox that merely exists on disk must not win over the keybox of the module
+# that is actually enabled: a leftover Oh My Keymint keybox on a device that now
+# runs TrickyStore used to be parsed first. Enabled modules are therefore
+# scanned before disabled ones, and only then legacy paths are tried.
+# ---------------------------------------------------------------------------
+
+KB=""
+KB_OWNER=""
+IS_RKP=0
+MFR=""
+CHOSEN=0
+RKP_MFRS=""
+WARNINGS=""
+KS_ENTRIES=""
+KS_MODULES=""
+KS_ENABLED_COUNT=0
+KS_PRIMARY=""
+TEESIM_MFR_OVERRIDE=""
+SEEN_FILE="/data/adb/rkp_mfr_auto.seen.$$"
+: > "$SEEN_FILE" 2>/dev/null
+trap 'rm -f "$SEEN_FILE" 2>/dev/null' 0
+
+warn() {
+  case ";$WARNINGS;" in
+    *";$1;"*) ;;
+    *) WARNINGS="${WARNINGS:+$WARNINGS;}$1" ;;
+  esac
+}
+
+valid_mfr() {
+  [ -n "$1" ] || return 1
+  [ "${#1}" -le 48 ] || return 1
+  printf '%s' "$1" | grep -q '[^A-Za-z0-9._ -]' && return 1
+  return 0
+}
+
+# Variant of the shared tricky_store id (TrickyStore, OSS, TEESimulator-RS).
+ks_tricky_variant() {
+  d="$1"
+  nm="$2"
+  if [ -f "$d/libTrickyStoreOSS.so" ]; then
+    echo "TrickyStoreOSS"
+    return
+  fi
+  if [ -f "$d/libcertgen.so" ] || [ -f "$d/supervisor" ]; then
+    echo "TEESimulatorRS"
+    return
+  fi
+  case "$nm" in
+    *Tricky*Store*OSS*|*TrickyStore*OSS*) echo "TrickyStoreOSS"; return ;;
+    *TEESimulator*RS*|*TEESimulator-RS*) echo "TEESimulatorRS"; return ;;
+    *TEESimulator*|*TEESim*) echo "TEESimulator"; return ;;
+  esac
+  echo "TrickyStore"
+}
+
+ks_label_from_dir() {
+  d="$1"
+  id="${d##*/}"
+  nm=""
+  [ -f "$d/module.prop" ] && nm=$(grep -iE '^name=' "$d/module.prop" 2>/dev/null | head -n 1 | cut -d= -f2-)
+  # Known module ids are authoritative.
+  case "$id" in
+    oh_my_keymint) echo "OhMyKeymint"; return ;;
+    teesim) echo "TEESimulator"; return ;;
+    tricky_store) ks_tricky_variant "$d" "$nm"; return ;;
+  esac
+  # Forks with a custom id need a provider-specific file or an exact name.
+  # Deliberately no bare "*OSS*" match: HMA-OSS Zygisk and other consumer
+  # modules used to be mistaken for TrickyStore OSS and could win the keybox
+  # selection over the keystore module that is actually installed.
+  [ -f "$d/libTrickyStoreOSS.so" ] && { echo "TrickyStoreOSS"; return; }
+  if [ -f "$d/libcertgen.so" ] || [ -f "$d/supervisor" ]; then
+    echo "TEESimulatorRS"
+    return
+  fi
+  [ -f "$d/libTrickyStore.so" ] && { echo "TrickyStore"; return; }
+  case "$nm" in
+    *Tricky*Store*OSS*|*TrickyStore*OSS*) echo "TrickyStoreOSS"; return ;;
+    *TEESimulator*RS*|*TEESimulator-RS*) echo "TEESimulatorRS"; return ;;
+    *TEESimulator*|*TEESim*) echo "TEESimulator"; return ;;
+    *Tricky*Store*|*TrickyStore*) echo "TrickyStore"; return ;;
+    *Oh*Keymint*|*OhMyKeymint*) echo "OhMyKeymint"; return ;;
+  esac
+  echo ""
+}
+
+scan_ks_dirs() {
+  seen_ids=""
+  for base in /data/adb/modules /data/adb/modules_update; do
+    [ -d "$base" ] || continue
+    for d in "$base"/*; do
+      [ -d "$d" ] || continue
+      id="${d##*/}"
+      case ";$seen_ids;" in
+        *";$id;"*) continue ;;
+      esac
+      label=$(ks_label_from_dir "$d")
+      [ -n "$label" ] || continue
+      seen_ids="$seen_ids;$id"
+      en=1
+      if [ -f "$d/disable" ] || [ -f "$d/remove" ]; then en=0; fi
+      case "$label" in
+        TEESimulator|TEESimulatorRS|TrickyStore|TrickyStoreOSS) w=5 ;;
+        OhMyKeymint) w=4 ;;
+        *) w=3 ;;
+      esac
+      # entry layout: weight|label|enabled|module_dir
+      KS_ENTRIES="$KS_ENTRIES ${w}|${label}|${en}|${d}"
+      if [ "$en" = "1" ]; then
+        KS_ENABLED_COUNT=$((KS_ENABLED_COUNT + 1))
+        KS_MODULES="${KS_MODULES}${label}|${id}|enabled;"
+      else
+        KS_MODULES="${KS_MODULES}${label}|${id}|disabled;"
+      fi
+    done
   done
 }
 
-KB=""
-IS_RKP=0
-MFR=""
+# Read every value of a JSON string key ("keybox", "manufacturer", ...) without jq.
+teesim_json_values() {
+  awk -v key="$1" '
+    {
+      line = $0
+      pat = "\"" key "\"[ \t]*:[ \t]*\"[^\"]*\""
+      while (match(line, pat) > 0) {
+        s = substr(line, RSTART, RLENGTH)
+        sub(/.*:[ \t]*"/, "", s)
+        sub(/"$/, "", s)
+        print s
+        line = substr(line, RSTART + RLENGTH)
+      }
+    }
+  ' "$2" 2>/dev/null
+}
 
-for f in $CANDIDATES; do
-  [ -f "$f" ] || continue
-  PARSE_OUT=$(parse_keybox "$f")
-  case "$PARSE_OUT" in
+add_mfr_variant() {
+  m="$1"
+  case ";$RKP_MFRS;" in
+    *";$m;"*) ;;
+    *) RKP_MFRS="${RKP_MFRS:+$RKP_MFRS;}$m" ;;
+  esac
+  dlog "keybox: RKP map[3]=$m from $2"
+}
+
+try_keybox() {
+  f="$1"
+  owner="$2"
+  choose="${3:-1}"
+  [ -n "$f" ] || return 0
+  [ -f "$f" ] || return 0
+  if [ -f "$SEEN_FILE" ] && grep -Fxq "$f" "$SEEN_FILE" 2>/dev/null; then
+    return 0
+  fi
+  printf '%s\n' "$f" >> "$SEEN_FILE" 2>/dev/null
+  out=$(parse_keybox "$f")
+  case "$out" in
     RKP:*)
-      KB="$f"
-      IS_RKP=1
-      MFR="${PARSE_OUT#RKP:}"
-      [ -n "$MFR" ] && break
+      m="${out#RKP:}"
+      m=$(printf '%s' "$m" | tr -d '\r\n\t' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+      if [ -n "$m" ] && ! valid_mfr "$m"; then
+        warn bad_mfr
+        dlog "keybox: rejected unsafe map[3] value in $f"
+        m=""
+      fi
+      [ -n "$m" ] && add_mfr_variant "$m" "$f"
+      if [ "$choose" = "1" ] && [ "$CHOSEN" = "0" ]; then
+        if [ -n "$m" ]; then
+          KB="$f"; KB_OWNER="$owner"; MFR="$m"; IS_RKP=1; CHOSEN=1
+        elif [ -z "$KB" ]; then
+          KB="$f"; KB_OWNER="$owner"; IS_RKP=1
+        fi
+      fi
       ;;
     *)
-      [ -z "$KB" ] && KB="$f"
+      if [ "$choose" = "1" ] && [ "$CHOSEN" = "0" ] && [ -z "$KB" ]; then
+        KB="$f"; KB_OWNER="$owner"; IS_RKP=0
+      fi
       ;;
   esac
+}
+
+discover_module_keyboxes() {
+  label="$1"
+  choose="${2:-1}"
+  case "$label" in
+    TEESimulator)
+      cfg="/data/adb/teesim/config.json"
+      if [ -f "$cfg" ]; then
+        while IFS= read -r alt; do
+          [ -n "$alt" ] || continue
+          case "$alt" in
+            /*) try_keybox "$alt" "$label" "$choose" ;;
+            *)  try_keybox "/data/adb/teesim/$alt" "$label" "$choose" ;;
+          esac
+        done <<EOF
+$(teesim_json_values keybox "$cfg")
+EOF
+        while IFS= read -r mfr; do
+          [ -n "$mfr" ] || continue
+          TEESIM_MFR_OVERRIDE="${TEESIM_MFR_OVERRIDE:+$TEESIM_MFR_OVERRIDE;}$mfr"
+        done <<EOF
+$(teesim_json_values manufacturer "$cfg")
+EOF
+      fi
+      try_keybox "/data/adb/teesim/keybox.xml" "$label" "$choose"
+      ;;
+    TrickyStore|TrickyStoreOSS|TEESimulatorRS)
+      try_keybox "/data/adb/tricky_store/keybox.xml" "$label" "$choose"
+      if [ -f /data/adb/tricky_store/target.txt ]; then
+        while IFS= read -r alt; do
+          [ -n "$alt" ] || continue
+          case "$alt" in
+            /*) try_keybox "$alt" "$label" "$choose" ;;
+            *)  try_keybox "/data/adb/tricky_store/$alt" "$label" "$choose" ;;
+          esac
+        done <<EOF
+$(awk -F'[][]' '/^[ \t]*\[[^]]+\.xml\][ \t]*$/ {print $2}' /data/adb/tricky_store/target.txt 2>/dev/null)
+EOF
+      fi
+      for alt in /data/adb/tricky_store/*.xml; do
+        [ -f "$alt" ] && try_keybox "$alt" "$label" "$choose"
+      done
+      ;;
+    OhMyKeymint)
+      try_keybox "/data/misc/keystore/omk/keybox.xml" "$label" "$choose"
+      try_keybox "/data/adb/omk/keybox.xml" "$label" "$choose"
+      ;;
+  esac
+}
+
+scan_ks_dirs
+
+# The highest-priority enabled module is authoritative: only its keyboxes may be
+# applied. Keyboxes of any other enabled module are parsed for conflict reporting
+# but never override the active module. Disabled modules contribute nothing.
+for weight in 5 4 3; do
+  for entry in $KS_ENTRIES; do
+    e_w="${entry%%|*}"
+    e_rest="${entry#*|}"
+    [ "$e_w" = "$weight" ] || continue
+    e_label="${e_rest%%|*}"
+    e_rest="${e_rest#*|}"
+    e_en="${e_rest%%|*}"
+    [ "$e_en" = "1" ] || continue
+    if [ -z "$KS_PRIMARY" ]; then
+      KS_PRIMARY="$e_label"
+      discover_module_keyboxes "$e_label" 1
+    else
+      discover_module_keyboxes "$e_label" 0
+    fi
+  done
 done
+
+# Nothing recognisable installed: keep supporting unknown forks by path only.
+if [ -z "$KS_ENTRIES" ]; then
+  warn unknown_setup
+  for f in /data/adb/teesim/keybox.xml /data/adb/tricky_store/keybox.xml \
+           /data/adb/TEESimulator/keybox.xml /data/adb/omk/keybox.xml \
+           /data/misc/keystore/omk/keybox.xml; do
+    try_keybox "$f" "Unknown"
+  done
+fi
+
+[ "$KS_ENABLED_COUNT" -gt 1 ] && warn multi_module
+[ -n "$KS_ENTRIES" ] && [ "$KS_ENABLED_COUNT" -eq 0 ] && warn module_disabled
+
+case "$RKP_MFRS" in
+  *";"*) warn mfr_conflict ;;
+esac
+
+if [ -n "$TEESIM_MFR_OVERRIDE" ] && [ -n "$MFR" ]; then
+  case ";$TEESIM_MFR_OVERRIDE;" in
+    *";$MFR;"*) ;;
+    *) warn teesim_mfr_override ;;
+  esac
+fi
 
 detect_apps() {
   PKGS=$(pm list packages 2>/dev/null | sed 's/^package://')
   [ -z "$PKGS" ] && return
+  # Reuse the same package list in detect_pixel_camera instead of calling pm twice.
+  PKGS_CACHE="$PKGS"
 
   FOUND=""
   for entry in \
@@ -377,16 +664,26 @@ update_module_desc() {
   [ -f "$MODPROP" ] || return
   PENDING_STR=""
   [ -f "$REBOOT_FLAG" ] && PENDING_STR=" [Reboot pending]"
+  OWNER_STR=""
+  if [ -n "$KB_OWNER" ]; then
+    OWNER_STR=" | ${KB_OWNER}"
+  elif [ -n "$KS_PRIMARY" ]; then
+    OWNER_STR=" | ${KS_PRIMARY}"
+  fi
   if [ -z "$ZYGISK_BACKEND" ]; then
     DESC="[Zygisk: Missing] Install ReZygisk, Zygisk Next, BreZygisk, or Magisk Zygisk${PENDING_STR}"
   elif [ -z "$KB" ]; then
-    DESC="[Zygisk: ${ZYGISK_BACKEND} | No keybox] Waiting for RKP keybox.xml${PENDING_STR}"
+    DESC="[Zygisk: ${ZYGISK_BACKEND} | No keybox${OWNER_STR}] Waiting for RKP keybox.xml${PENDING_STR}"
   elif [ "$IS_RKP" -eq 0 ] || [ -z "$MFR" ]; then
-    DESC="[Zygisk: ${ZYGISK_BACKEND} | Non-RKP] Module not required for current keybox${PENDING_STR}"
+    DESC="[Zygisk: ${ZYGISK_BACKEND} | Non-RKP${OWNER_STR}] Module not required for current keybox${PENDING_STR}"
   else
-    DESC="[Zygisk: ${ZYGISK_BACKEND} | RKP: ${MFR}] Per-app RKP manufacturer match (Pixel Camera excluded)${PENDING_STR}"
+    DESC="[Zygisk: ${ZYGISK_BACKEND} | RKP: ${MFR}${OWNER_STR}] Per-app RKP manufacturer match (Pixel Camera excluded)${PENDING_STR}"
   fi
-  awk -v d="$DESC" 'BEGIN{done=0} /^description=/{print "description=" d; done=1; next} {print} END{if(!done) print "description=" d}' "$MODPROP" > "${MODPROP}.tmp" 2>/dev/null && mv "${MODPROP}.tmp" "$MODPROP"
+  TMP_PROP="${MODPROP}.$$.tmp"
+  if awk -v d="$DESC" 'BEGIN{done=0} /^description=/{print "description=" d; done=1; next} {print} END{if(!done) print "description=" d}' "$MODPROP" > "$TMP_PROP" 2>/dev/null; then
+    cmp -s "$TMP_PROP" "$MODPROP" || mv "$TMP_PROP" "$MODPROP"
+  fi
+  rm -f "$TMP_PROP" 2>/dev/null
 }
 
 detect_pkg_tool() {
@@ -453,7 +750,10 @@ is_pixel_rom() {
 }
 
 detect_pixel_camera() {
-  PKGS_ALL=$(pm list packages 2>/dev/null | sed 's/^package://')
+  PKGS_ALL="$PKGS_CACHE"
+  if [ -z "$PKGS_ALL" ]; then
+    PKGS_ALL=$(pm list packages 2>/dev/null | sed 's/^package://')
+  fi
   # PackageManager not ready yet (early boot): keep the previous result
   [ -z "$PKGS_ALL" ] && return 0
 
@@ -476,8 +776,8 @@ detect_pixel_camera() {
     fi
   fi
 
-  printf '%s' "$OUT" > "${CAM_AUTO_FILE}.tmp" 2>/dev/null
-  mv "${CAM_AUTO_FILE}.tmp" "$CAM_AUTO_FILE" 2>/dev/null
+  printf '%s' "$OUT" > "${CAM_AUTO_FILE}.$$.tmp" 2>/dev/null
+  mv "${CAM_AUTO_FILE}.$$.tmp" "$CAM_AUTO_FILE" 2>/dev/null
   chmod 0644 "$CAM_AUTO_FILE" 2>/dev/null
 }
 
@@ -486,13 +786,7 @@ if [ "$1" = "--scan-cams" ]; then
   exit 0
 fi
 
-if [ "$1" = "--export-log" ]; then
-  OUT_DIR="/sdcard/Download"
-  [ -d "$OUT_DIR" ] || OUT_DIR="/storage/emulated/0/Download"
-  mkdir -p "$OUT_DIR" 2>/dev/null
-  TS=$(date '+%Y%m%d_%H%M%S' 2>/dev/null || echo "latest")
-  OUT_FILE="$OUT_DIR/rkp_mfr_auto_log_${TS}.txt"
-  {
+emit_diag_log() {
     echo "=== RKP Manufacturer Auto-Match Diagnostic Log ==="
     echo "Generated: $(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo unknown)"
     if [ -f "$MODPROP" ]; then
@@ -504,9 +798,13 @@ if [ "$1" = "--export-log" ]; then
     echo ""
     echo "=== Status ==="
     echo "ZYGISK_BACKEND=${ZYGISK_BACKEND:-missing}"
+    echo "KEYSTORE_MODULE=${KB_OWNER:-${KS_PRIMARY:-none}}"
+    echo "KEYSTORE_MODULES=${KS_MODULES:-none}"
     echo "KEYBOX_PATH=${KB:-none}"
     echo "IS_RKP=$IS_RKP"
     echo "RKP_MFR=${MFR:-none}"
+    echo "RKP_MFRS=${RKP_MFRS:-none}"
+    echo "WARNINGS=${WARNINGS:-none}"
     echo "REAL_MFR=$(head -n 1 "$REAL_MFR_FILE" 2>/dev/null)"
     echo "CUR_MFR=$(getprop ro.product.manufacturer 2>/dev/null)"
     echo "CUR_VENDOR_MFR=$(getprop ro.product.vendor.manufacturer 2>/dev/null)"
@@ -556,14 +854,30 @@ if [ "$1" = "--export-log" ]; then
     echo ""
     echo "=== Debug Log ($DEBUG_LOG_FILE) ==="
     if [ -f "$DEBUG_LOG_FILE" ]; then cat "$DEBUG_LOG_FILE"; else echo "(empty)"; fi
-  } > "$OUT_FILE" 2>/dev/null
+}
+
+# --export-log        private root-only copy (0600) used by the WebUI by default
+# --export-log-public explicit copy to shared storage after the user confirms
+if [ "$1" = "--export-log" ] || [ "$1" = "--export-log-public" ]; then
+  TS=$(date '+%Y%m%d_%H%M%S' 2>/dev/null || echo "latest")
+  if [ "$1" = "--export-log" ]; then
+    OUT_DIR="/data/adb/rkp_mfr_auto_export"
+    mkdir -p "$OUT_DIR" 2>/dev/null
+    chmod 0700 "$OUT_DIR" 2>/dev/null
+  else
+    OUT_DIR="/sdcard/Download"
+    [ -d "$OUT_DIR" ] || OUT_DIR="/storage/emulated/0/Download"
+    mkdir -p "$OUT_DIR" 2>/dev/null
+  fi
+  OUT_FILE="$OUT_DIR/rkp_mfr_auto_log_${TS}.txt"
+  emit_diag_log > "$OUT_FILE" 2>/dev/null
+  [ "$1" = "--export-log" ] && chmod 0600 "$OUT_FILE" 2>/dev/null
   if [ -f "$OUT_FILE" ]; then
     echo "$OUT_FILE"
     exit 0
-  else
-    echo "Failed to write $OUT_FILE" >&2
-    exit 1
   fi
+  echo "Failed to write $OUT_FILE" >&2
+  exit 1
 fi
 
 if [ "$1" = "--list-apps" ]; then
@@ -625,6 +939,24 @@ if [ "$1" = "--mark-reboot" ]; then
   exit 0
 fi
 
+if [ "$1" = "--refresh-desc" ]; then
+  update_module_desc
+  exit 0
+fi
+
+if [ "$1" = "--keybox" ]; then
+  echo "ZYGISK_BACKEND=$ZYGISK_BACKEND"
+  echo "KEYSTORE_MODULE=${KB_OWNER:-${KS_PRIMARY:-}}"
+  echo "KEYSTORE_MODULES=$KS_MODULES"
+  echo "KEYBOX_PATH=$KB"
+  echo "KEYBOX_OWNER=$KB_OWNER"
+  echo "IS_RKP=$IS_RKP"
+  echo "RKP_MFR=$MFR"
+  echo "RKP_MFRS=$RKP_MFRS"
+  echo "WARNINGS=$WARNINGS"
+  exit 0
+fi
+
 if [ "$1" = "--status" ]; then
   PENDING_REBOOT=0
   [ -f "$REBOOT_FLAG" ] && PENDING_REBOOT=1
@@ -665,6 +997,10 @@ if [ "$1" = "--status" ]; then
   echo "DEBUG_LOG=$DEBUG_LOG"
   echo "ZYGISK_BACKEND=$ZYGISK_BACKEND"
   echo "PENDING_REBOOT=$PENDING_REBOOT"
+  echo "KEYSTORE_MODULE=${KB_OWNER:-${KS_PRIMARY:-}}"
+  echo "KEYSTORE_MODULES=$KS_MODULES"
+  echo "RKP_MFRS=$RKP_MFRS"
+  echo "WARNINGS=$WARNINGS"
   detect_apps
   if [ -f "$LOG" ]; then
     echo "LAST_LOG=$(head -n 1 "$LOG")"
@@ -676,9 +1012,13 @@ fi
 
 if [ "$1" = "--dry-run" ]; then
   echo "Zygisk backend: ${ZYGISK_BACKEND:-missing}"
+  echo "Keystore module: ${KB_OWNER:-${KS_PRIMARY:-none}}"
+  echo "Keystore modules: ${KS_MODULES:-none}"
   echo "Keybox: ${KB:-none}"
   echo "RKP keybox: $IS_RKP"
   echo "Detected RKP map[3]: ${MFR:-none}"
+  echo "Other RKP manufacturers: ${RKP_MFRS:-none}"
+  echo "Warnings: ${WARNINGS:-none}"
   echo "Spoof vendor manufacturer: $SPOOF_VENDOR_MFR"
   exit 0
 fi
