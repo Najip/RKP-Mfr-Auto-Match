@@ -119,19 +119,20 @@ jobs:
           ZIP="${{ steps.pack.outputs.zip_name }}"
           NOTES="${{ inputs.changelog_notes }}"
 
+          if [[ -n "$NOTES" ]]; then
+            printf '%s\n' "$NOTES" > /tmp/release_notes.md
+          else
+            bash .github/scripts/gen_changelog.sh release "$TAG" HEAD > /tmp/release_notes.md
+          fi
+
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "$ZIP" --clobber
-            gh release edit "$TAG" --prerelease=false
-          elif [[ -n "$NOTES" ]]; then
-            gh release create "$TAG" "$ZIP" \
-              --target main \
-              --title "RKP Manufacturer Auto-Match ${TAG}" \
-              --notes "$NOTES"
+            gh release edit "$TAG" --prerelease=false --notes-file /tmp/release_notes.md
           else
             gh release create "$TAG" "$ZIP" \
               --target main \
               --title "RKP Manufacturer Auto-Match ${TAG}" \
-              --generate-notes
+              --notes-file /tmp/release_notes.md
           fi
 
       - name: Update update.json and changelog.md

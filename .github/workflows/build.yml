@@ -140,14 +140,17 @@ jobs:
           TAG="${{ steps.meta.outputs.tag }}"
           ZIP="${{ steps.meta.outputs.zip_name }}"
 
+          bash .github/scripts/gen_changelog.sh pre "$TAG" "${GITHUB_SHA}" > /tmp/release_notes.md
+
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "$ZIP" --clobber
+            gh release edit "$TAG" --notes-file /tmp/release_notes.md
           else
             gh release create "$TAG" "$ZIP" \
               --prerelease \
               --target "${GITHUB_SHA}" \
               --title "RKP Manufacturer Auto-Match ${TAG}" \
-              --generate-notes
+              --notes-file /tmp/release_notes.md
           fi
 
       - name: Publish Full Release
@@ -158,14 +161,16 @@ jobs:
           TAG="${{ steps.meta.outputs.tag }}"
           ZIP="${{ steps.meta.outputs.zip_name }}"
 
+          bash .github/scripts/gen_changelog.sh release "$TAG" "${GITHUB_SHA}" > /tmp/release_notes.md
+
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "$ZIP" --clobber
-            gh release edit "$TAG" --prerelease=false
+            gh release edit "$TAG" --prerelease=false --notes-file /tmp/release_notes.md
           else
             gh release create "$TAG" "$ZIP" \
               --target "${GITHUB_SHA}" \
               --title "RKP Manufacturer Auto-Match ${TAG}" \
-              --generate-notes
+              --notes-file /tmp/release_notes.md
           fi
 
       - name: Update update.json and changelog.md (Release only)
