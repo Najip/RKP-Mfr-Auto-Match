@@ -116,29 +116,20 @@ static void companion_handler(int fd) {
     }
     proc_name[name_len] = '\0';
 
-    // Default to zygisk when running inside Zygisk unless explicitly set to resetprop
-    bool use_zygisk = true;
     bool spoof_vendor = false;
 
     if (FILE *cf = fopen(kConfPath, "r")) {
         char line[256];
         while (fgets(line, sizeof(line), cf)) {
             trim_line(line);
-            if (strncmp(line, "SPOOF_MODE=", 11) == 0) {
-                const char *v = line + 11;
-                if (strcmp(v, "resetprop") == 0) {
-                    use_zygisk = false;
-                } else if (strcmp(v, "zygisk") == 0) {
-                    use_zygisk = true;
-                }
-            } else if (strncmp(line, "SPOOF_VENDOR_MFR=", 17) == 0) {
+            if (strncmp(line, "SPOOF_VENDOR_MFR=", 17) == 0) {
                 spoof_vendor = (line[17] == '1');
             }
         }
         fclose(cf);
     }
 
-    if (!use_zygisk || is_excluded_package(proc_name)) {
+    if (is_excluded_package(proc_name)) {
         write_exact(fd, &reply, sizeof(reply));
         return;
     }

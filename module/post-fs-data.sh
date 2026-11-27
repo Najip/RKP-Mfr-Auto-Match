@@ -3,46 +3,50 @@ MODDIR="${0%/*}"
 LOG="$MODDIR/last.log"
 CONF="/data/adb/rkp_mfr_auto.conf"
 MFR_FILE="/data/adb/rkp_mfr_auto.mfr"
+REBOOT_FLAG="/data/adb/rkp_mfr_auto.reboot"
+MODPROP="$MODDIR/module.prop"
 
-detect_zygisk() {
-  for d in \
-    /data/adb/modules/zygisksu \
-    /data/adb/modules/rezygisk \
-    /data/adb/modules/brezygisk \
-    /data/adb/modules/neozygisk \
-    /data/adb/modules/zygisk_lsposed
-  do
-    if [ -d "$d" ] && [ ! -f "$d/disable" ] && [ ! -f "$d/remove" ]; then
-      echo 1
-      return
+detect_zygisk_backend() {
+  for d in /data/adb/modules/*; do
+    [ -d "$d" ] || continue
+    [ -f "$d/disable" ] && continue
+    [ -f "$d/remove" ] && continue
+    bname="${d##*/}"
+    case "$bname" in
+      rkp_mfr_auto) continue ;;
+      rezygisk) echo "ReZygisk"; return ;;
+      zygisksu) echo "Zygisk Next"; return ;;
+      brezygisk|BreZygisk) echo "BreZygisk"; return ;;
+      neozygisk) echo "NeoZygisk"; return ;;
+    esac
+    if [ -f "$d/module.prop" ]; then
+      mname=$(grep -iE '^name=' "$d/module.prop" 2>/dev/null | head -n 1 | cut -d= -f2-)
+      case "$(printf '%s %s' "$bname" "$mname" | tr 'A-Z' 'a-z')" in
+        *zygisk*)
+          echo "${mname:-$bname}"
+          return
+          ;;
+      esac
     fi
   done
   if command -v magisk >/dev/null 2>&1; then
     ZVAL=$(magisk --sqlite "SELECT value FROM settings WHERE key='zygisk';" 2>/dev/null | sed 's/.*=//')
     if [ "$ZVAL" = "1" ]; then
-      echo 1
+      echo "Magisk Zygisk"
       return
     fi
   fi
-  echo 0
+  echo ""
 }
 
-ZYGISK_DETECTED=$(detect_zygisk)
+ZYGISK_BACKEND=$(detect_zygisk_backend)
 
-# Default settings (vendor prop off by default to avoid camera crashes)
+# Default settings (vendor prop off by default)
 SPOOF_VENDOR_MFR=0
-SPOOF_MODE=""
 if [ -f "$CONF" ]; then
   . "$CONF"
 fi
 [ "$SPOOF_VENDOR_MFR" = "1" ] || SPOOF_VENDOR_MFR=0
-if [ "$SPOOF_MODE" != "zygisk" ] && [ "$SPOOF_MODE" != "resetprop" ]; then
-  if [ "$ZYGISK_DETECTED" = "1" ] && [ -d "$MODDIR/zygisk" ]; then
-    SPOOF_MODE="zygisk"
-  else
-    SPOOF_MODE="resetprop"
-  fi
-fi
 
 RP=""
 for bin in /data/adb/ksu/bin/resetprop /data/adb/ap/bin/resetprop /data/adb/magisk/resetprop; do
@@ -301,7 +305,32 @@ detect_apps() {
   echo "CAMERA_APPS=$CAM"
 }
 
+update_module_desc() {
+  [ -f "$MODPROP" ] || return
+  PENDING_STR=""
+  [ -f "$REBOOT_FLAG" ] && PENDING_STR=" [Reboot pending]"
+  if [ -z "$ZYGISK_BACKEND" ]; then
+    DESC="[Zygisk: Missing] Install ReZygisk, Zygisk Next, BreZygisk, or Magisk Zygisk${PENDING_STR}"
+  elif [ -z "$KB" ]; then
+    DESC="[Zygisk: ${ZYGISK_BACKEND} | No keybox] Waiting for RKP keybox.xml${PENDING_STR}"
+  elif [ "$IS_RKP" -eq 0 ] || [ -z "$MFR" ]; then
+    DESC="[Zygisk: ${ZYGISK_BACKEND} | Non-RKP] Module not required for current keybox${PENDING_STR}"
+  else
+    DESC="[Zygisk: ${ZYGISK_BACKEND} | RKP: ${MFR}] Per-app RKP manufacturer match (camera apps excluded)${PENDING_STR}"
+  fi
+  awk -v d="$DESC" 'BEGIN{done=0} /^description=/{print "description=" d; done=1; next} {print} END{if(!done) print "description=" d}' "$MODPROP" > "${MODPROP}.tmp" 2>/dev/null && mv "${MODPROP}.tmp" "$MODPROP"
+}
+
+if [ "$1" = "--mark-reboot" ]; then
+  touch "$REBOOT_FLAG" 2>/dev/null
+  update_module_desc
+  exit 0
+fi
+
 if [ "$1" = "--status" ]; then
+  PENDING_REBOOT=0
+  [ -f "$REBOOT_FLAG" ] && PENDING_REBOOT=1
+  update_module_desc
   echo "KEYBOX_PATH=$KB"
   echo "IS_RKP=$IS_RKP"
   echo "RKP_MFR=$MFR"
@@ -309,8 +338,8 @@ if [ "$1" = "--status" ]; then
   echo "CUR_VENDOR_MFR=$(getprop ro.product.vendor.manufacturer 2>/dev/null)"
   echo "CUR_ATTEST_MFR=$(getprop ro.product.manufacturer_for_attestation 2>/dev/null)"
   echo "SPOOF_VENDOR_MFR=$SPOOF_VENDOR_MFR"
-  echo "SPOOF_MODE=$SPOOF_MODE"
-  echo "ZYGISK_DETECTED=$ZYGISK_DETECTED"
+  echo "ZYGISK_BACKEND=$ZYGISK_BACKEND"
+  echo "PENDING_REBOOT=$PENDING_REBOOT"
   detect_apps
   if [ -f "$LOG" ]; then
     echo "LAST_LOG=$(head -n 1 "$LOG")"
@@ -321,31 +350,47 @@ if [ "$1" = "--status" ]; then
 fi
 
 if [ "$1" = "--dry-run" ]; then
+  echo "Zygisk backend: ${ZYGISK_BACKEND:-missing}"
   echo "Keybox: ${KB:-none}"
   echo "RKP keybox: $IS_RKP"
   echo "Detected RKP map[3]: ${MFR:-none}"
-  echo "Spoof mode: $SPOOF_MODE (zygisk_detected=$ZYGISK_DETECTED)"
   echo "Spoof vendor manufacturer: $SPOOF_VENDOR_MFR"
+  exit 0
+fi
+
+# Clear pending-reboot flag on normal boot
+if [ "$1" != "--hot-apply" ]; then
+  rm -f "$REBOOT_FLAG"
+fi
+
+if [ -z "$ZYGISK_BACKEND" ]; then
+  rm -f "$MFR_FILE"
+  update_module_desc
+  echo "Zygisk backend missing; install ReZygisk / Zygisk Next / BreZygisk / Magisk Zygisk" > "$LOG"
+  [ "$1" = "--hot-apply" ] && echo "Zygisk backend missing"
   exit 0
 fi
 
 if [ -z "$KB" ]; then
   rm -f "$MFR_FILE"
-  echo "No keybox.xml found" > "$LOG"
+  update_module_desc
+  echo "No keybox.xml found (Zygisk: $ZYGISK_BACKEND)" > "$LOG"
   [ "$1" = "--hot-apply" ] && echo "No keybox.xml found"
   exit 0
 fi
 
 if [ "$IS_RKP" -eq 0 ]; then
   rm -f "$MFR_FILE"
-  echo "Not an RKP keybox ($KB), module not needed" > "$LOG"
+  update_module_desc
+  echo "Not an RKP keybox ($KB), module not needed (Zygisk: $ZYGISK_BACKEND)" > "$LOG"
   [ "$1" = "--hot-apply" ] && echo "Not an RKP keybox, nothing applied"
   exit 0
 fi
 
 if [ -z "$MFR" ]; then
   rm -f "$MFR_FILE"
-  echo "RKP keybox found but no map[3] manufacturer in $KB" > "$LOG"
+  update_module_desc
+  echo "RKP keybox found but no map[3] manufacturer in $KB (Zygisk: $ZYGISK_BACKEND)" > "$LOG"
   [ "$1" = "--hot-apply" ] && echo "No map[3] manufacturer in keybox"
   exit 0
 fi
@@ -354,56 +399,18 @@ fi
 printf '%s\n' "$MFR" > "$MFR_FILE"
 chmod 0644 "$MFR_FILE" 2>/dev/null
 
-if [ "$SPOOF_MODE" = "zygisk" ]; then
-  # In Zygisk mode, keep global ro.product.manufacturer stock so camera apps don't crash.
-  # Only set manufacturer_for_attestation globally if resetprop is available.
-  if [ -n "$RP" ]; then
-    CUR_A=$(getprop ro.product.manufacturer_for_attestation)
-    [ "$CUR_A" != "$MFR" ] && "$RP" -n ro.product.manufacturer_for_attestation "$MFR"
-  fi
-  if [ "$1" = "--hot-apply" ]; then
-    echo "Zygisk mode: hot-updated mfr=$MFR from $KB (camera apps excluded)" > "$LOG"
-    echo "Updated RKP mfr=$MFR for Zygisk (restart target apps; reboot if first install)"
-  else
-    echo "Zygisk mode: mfr=$MFR from $KB (per-app, camera apps excluded)" > "$LOG"
-  fi
-  exit 0
+# Keep global ro.product.manufacturer stock so camera apps don't crash.
+# Only set manufacturer_for_attestation globally if resetprop is available.
+if [ -n "$RP" ]; then
+  CUR_A=$(getprop ro.product.manufacturer_for_attestation)
+  [ "$CUR_A" != "$MFR" ] && "$RP" -n ro.product.manufacturer_for_attestation "$MFR"
 fi
 
-if [ -z "$RP" ]; then
-  echo "resetprop not found (detected $MFR from $KB)" > "$LOG"
-  [ "$1" = "--hot-apply" ] && echo "resetprop not found"
-  exit 1
-fi
-
-if [ "$SPOOF_VENDOR_MFR" = "1" ]; then
-  PROPS="ro.product.manufacturer ro.product.vendor.manufacturer ro.product.manufacturer_for_attestation"
-else
-  PROPS="ro.product.manufacturer ro.product.manufacturer_for_attestation"
-fi
-
-CUR=$(getprop ro.product.manufacturer)
-CUR_V=$(getprop ro.product.vendor.manufacturer)
-CUR_A=$(getprop ro.product.manufacturer_for_attestation)
-
-NEED_APPLY=0
-[ "$CUR" != "$MFR" ] && NEED_APPLY=1
-[ "$CUR_A" != "$MFR" ] && NEED_APPLY=1
-[ "$SPOOF_VENDOR_MFR" = "1" ] && [ "$CUR_V" != "$MFR" ] && NEED_APPLY=1
-
-if [ "$NEED_APPLY" -eq 0 ]; then
-  echo "Already matches ($MFR) from $KB (vendor_prop=$SPOOF_VENDOR_MFR)" > "$LOG"
-  [ "$1" = "--hot-apply" ] && echo "Already matches ($MFR)"
-  exit 0
-fi
-
-for p in $PROPS; do
-  "$RP" -n "$p" "$MFR"
-done
+update_module_desc
 
 if [ "$1" = "--hot-apply" ]; then
-  echo "Hot-applied RKP manufacturer=$MFR from $KB (was $CUR, vendor_prop=$SPOOF_VENDOR_MFR)" > "$LOG"
-  echo "Hot-applied $MFR (native props updated; reboot still needed for Java Build.*)"
+  echo "Zygisk ($ZYGISK_BACKEND): hot-updated mfr=$MFR from $KB (camera apps excluded)" > "$LOG"
+  echo "Updated RKP mfr=$MFR for $ZYGISK_BACKEND (restart target apps; reboot if first install)"
 else
-  echo "Applied RKP manufacturer=$MFR from $KB (was $CUR, vendor_prop=$SPOOF_VENDOR_MFR)" > "$LOG"
+  echo "Zygisk ($ZYGISK_BACKEND): mfr=$MFR from $KB (per-app, camera apps excluded)" > "$LOG"
 fi
