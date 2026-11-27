@@ -36,16 +36,27 @@ if [ -z "$ZYGISK_BACKEND" ]; then
     [ -d "$d/zygisk" ] && continue
     bname="${d##*/}"
     [ "$bname" = "rkp_mfr_auto" ] && continue
-    if [ -f "$d/module.prop" ]; then
-      mname=$(grep -iE '^name=' "$d/module.prop" 2>/dev/null | head -n 1 | cut -d= -f2-)
-      case "$(printf '%s %s' "$bname" "$mname" | tr 'A-Z' 'a-z')" in
-        *rezygisk*|*zygisksu*|*zygisk*next*|*brezygisk*|*neozygisk*)
-          ZYGISK_BACKEND="${mname:-$bname}"
-          break
-          ;;
-      esac
-    fi
+    mname=""
+    [ -f "$d/module.prop" ] && mname=$(grep -iE '^name=' "$d/module.prop" 2>/dev/null | head -n 1 | cut -d= -f2-)
+    for f in "$d"/lib64/libzygisk*.so "$d"/lib/libzygisk*.so "$d"/bin/*zygisk* "$d"/zygiskd; do
+      if [ -f "$f" ]; then
+        ZYGISK_BACKEND="${mname:-$bname}"
+        break 2
+      fi
+    done
+    case "$(printf '%s %s' "$bname" "$mname" | tr 'A-Z' 'a-z')" in
+      *zygisk*)
+        ZYGISK_BACKEND="${mname:-$bname}"
+        break
+        ;;
+    esac
   done
+fi
+
+if [ -z "$ZYGISK_BACKEND" ]; then
+  if pidof zygiskd >/dev/null 2>&1 || pidof zygiskd64 >/dev/null 2>&1; then
+    ZYGISK_BACKEND="Zygisk (active)"
+  fi
 fi
 
 if [ -z "$ZYGISK_BACKEND" ]; then

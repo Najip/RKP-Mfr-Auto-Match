@@ -41,16 +41,28 @@ detect_zygisk_backend() {
     [ -d "$d/zygisk" ] && continue
     bname="${d##*/}"
     [ "$bname" = "rkp_mfr_auto" ] && continue
-    if [ -f "$d/module.prop" ]; then
-      mname=$(grep -iE '^name=' "$d/module.prop" 2>/dev/null | head -n 1 | cut -d= -f2-)
-      case "$(printf '%s %s' "$bname" "$mname" | tr 'A-Z' 'a-z')" in
-        *rezygisk*|*zygisksu*|*zygisk*next*|*brezygisk*|*neozygisk*)
-          echo "${mname:-$bname}"
-          return
-          ;;
-      esac
-    fi
+    mname=""
+    [ -f "$d/module.prop" ] && mname=$(grep -iE '^name=' "$d/module.prop" 2>/dev/null | head -n 1 | cut -d= -f2-)
+    # Structural check: real Zygisk providers ship libzygisk.so or zygiskd/zygisk binaries
+    for f in "$d"/lib64/libzygisk*.so "$d"/lib/libzygisk*.so "$d"/bin/*zygisk* "$d"/zygiskd; do
+      if [ -f "$f" ]; then
+        echo "${mname:-$bname}"
+        return
+      fi
+    done
+    # Name fallback for future Zygisk providers (already excluded consumer modules with zygisk/)
+    case "$(printf '%s %s' "$bname" "$mname" | tr 'A-Z' 'a-z')" in
+      *zygisk*)
+        echo "${mname:-$bname}"
+        return
+        ;;
+    esac
   done
+  # Runtime daemon fallback (if a Zygisk provider runs outside /data/adb/modules)
+  if pidof zygiskd >/dev/null 2>&1 || pidof zygiskd64 >/dev/null 2>&1; then
+    echo "Zygisk (active)"
+    return
+  fi
   echo ""
 }
 
