@@ -710,6 +710,31 @@
       </div>
 
       <div class="card">
+        <div class="card-title">Debug Logging</div>
+        <div class="setting-row">
+          <div>
+            <div class="setting-title">Enable debug log</div>
+            <div class="setting-desc">
+              Logs installed modules, Zygisk backend, keybox/prop state, package listing diagnostics (for blank whitelist debugging), and per-app Zygisk actions to <code>/data/adb/rkp_mfr_auto.log</code>. Off by default.
+            </div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="debugLogToggle" />
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div id="debugLogPanel" style="margin-top:12px;">
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+            <button type="button" class="btn-chip" id="captureLogBtn">Capture Snapshot</button>
+            <button type="button" class="btn-chip" id="refreshLogBtn">Refresh</button>
+            <button type="button" class="btn-chip" id="copyLogBtn">Copy</button>
+            <button type="button" class="btn-chip" id="clearLogBtn">Clear</button>
+          </div>
+          <div class="log-box" id="debugLogBox" style="max-height:220px;overflow-y:auto;white-space:pre-wrap;">Debug log is empty.</div>
+        </div>
+      </div>
+
+      <div class="card">
         <div class="card-title">Color Theme</div>
         <div class="setting-desc">Choose how this WebUI looks.</div>
         <div class="theme-grid" id="themeGrid">
@@ -729,6 +754,15 @@
             <span class="swatch swatch-amoled"></span>
             AMOLED
           </button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Links</div>
+        <div class="setting-desc" style="margin-bottom:10px;">Open project source or author profile in your browser.</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;">
+          <button type="button" class="btn-chip" id="openRepoBtn">GitHub Repository</button>
+          <button type="button" class="btn-chip" id="openUserBtn">GitHub Profile (@Najip)</button>
         </div>
       </div>
     </section>
@@ -768,6 +802,9 @@
     const SCRIPT_PATH = "/data/adb/modules/rkp_mfr_auto/post-fs-data.sh";
     const CONF_PATH = "/data/adb/rkp_mfr_auto.conf";
     const EXCLUDE_PATH = "/data/adb/rkp_mfr_auto.exclude";
+    const DEBUG_LOG_PATH = "/data/adb/rkp_mfr_auto.log";
+    const REPO_URL = "https://github.com/Najip/RKP-Mfr-Auto-Match";
+    const USER_URL = "https://github.com/Najip";
     const THEME_KEY = "rkp_mfr_auto_theme";
     let cbCounter = 0;
     let toastTimer = null;
@@ -931,6 +968,7 @@
       const curVendor = data.CUR_VENDOR_MFR || "(empty)";
       const curAttest = data.CUR_ATTEST_MFR || "(empty)";
       const spoofVendor = data.SPOOF_VENDOR_MFR === "1";
+      const debugLog = data.DEBUG_LOG === "1";
       const zygiskBackend = data.ZYGISK_BACKEND || "";
       const pendingReboot = data.PENDING_REBOOT === "1";
       const detectedApps = parseAppList(data.DETECTED_APPS || "");
@@ -949,6 +987,8 @@
       document.getElementById("propAttestMfr").textContent = curAttest;
       document.getElementById("bootLog").textContent = data.LAST_LOG || "No log yet.";
       document.getElementById("vendorToggle").checked = spoofVendor;
+      document.getElementById("debugLogToggle").checked = debugLog;
+      loadDebugLog();
 
       renderApps(detectedApps, cameraApps, isRkp, rkpMfr, spoofVendor);
 
@@ -1094,10 +1134,35 @@
       await ksuExec("svc power reboot || reboot");
     });
 
+    async function writeConfig(markReboot) {
+      const spoofVendor = document.getElementById("vendorToggle").checked ? "1" : "0";
+      const debugLog = document.getElementById("debugLogToggle").checked ? "1" : "0";
+      let cmd = `printf 'SPOOF_VENDOR_MFR=%s\\nDEBUG_LOG=%s\\n' '${spoofVendor}' '${debugLog}' > "${CONF_PATH}" && chmod 0644 "${CONF_PATH}" 2>/dev/null`;
+      if (markReboot) {
+        cmd += ` && ${runScriptCmd("--mark-reboot")}`;
+      }
+      return await ksuExec(cmd);
+    }
+
+    async function loadDebugLog() {
+      const box = document.getElementById("debugLogBox");
+      if (!box) return;
+      const res = await ksuExec(`if [ -f "${DEBUG_LOG_PATH}" ]; then tail -n 100 "${DEBUG_LOG_PATH}"; fi`);
+      const txt = (res.stdout || "").trim();
+      box.textContent = txt || "Debug log is empty.";
+      box.scrollTop = box.scrollHeight;
+    }
+
+    async function openExternalUrl(url) {
+      const res = await ksuExec(`am start -a android.intent.action.VIEW -d '${url}' >/dev/null 2>&1 || /system/bin/am start -a android.intent.action.VIEW -d '${url}' >/dev/null 2>&1`);
+      if (res.errno !== 0) {
+        try { window.open(url, "_blank"); } catch (_) {}
+      }
+    }
+
     // Vendor manufacturer toggle (requires reboot)
     document.getElementById("vendorToggle").addEventListener("change", async (e) => {
-      const enabled = e.target.checked ? "1" : "0";
-      const res = await ksuExec(`printf 'SPOOF_VENDOR_MFR=%s\\n' '${enabled}' > "${CONF_PATH}" && ${runScriptCmd("--mark-reboot")}`);
+      const res = await writeConfig(true);
       if (res.errno === 0) {
         document.getElementById("rebootBanner").classList.add("show");
         showToast("Saved. Waiting for reboot to take effect.");
@@ -1107,6 +1172,64 @@
         showToast("Failed to save setting.");
       }
     });
+
+    // Debug logging toggle (no reboot required)
+    document.getElementById("debugLogToggle").addEventListener("change", async (e) => {
+      const res = await writeConfig(false);
+      if (res.errno === 0) {
+        showToast("Saved. No reboot required.");
+        if (e.target.checked) {
+          await ksuExec(`${runScriptCmd("--status")} >/dev/null 2>&1; ${runScriptCmd("--list-apps")} >/dev/null 2>&1`);
+        }
+        loadDebugLog();
+      } else {
+        e.target.checked = !e.target.checked;
+        showToast("Failed to save setting.");
+      }
+    });
+
+    document.getElementById("captureLogBtn").addEventListener("click", async () => {
+      if (!document.getElementById("debugLogToggle").checked) {
+        document.getElementById("debugLogToggle").checked = true;
+        await writeConfig(false);
+      }
+      await ksuExec(`${runScriptCmd("--status")} >/dev/null 2>&1; ${runScriptCmd("--list-apps")} >/dev/null 2>&1`);
+      await loadDebugLog();
+      showToast("Diagnostic snapshot captured.");
+    });
+
+    document.getElementById("refreshLogBtn").addEventListener("click", async () => {
+      await loadDebugLog();
+      showToast("Log refreshed.");
+    });
+
+    document.getElementById("copyLogBtn").addEventListener("click", async () => {
+      const txt = document.getElementById("debugLogBox").textContent || "";
+      if (!txt || txt === "Debug log is empty.") {
+        showToast("Log is empty.");
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(txt);
+        showToast("Log copied.");
+      } catch (_) {
+        const ta = document.createElement("textarea");
+        ta.value = txt;
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand("copy"); showToast("Log copied."); } catch (__) { showToast("Copy failed. File: /data/adb/rkp_mfr_auto.log"); }
+        document.body.removeChild(ta);
+      }
+    });
+
+    document.getElementById("clearLogBtn").addEventListener("click", async () => {
+      await ksuExec(`rm -f "${DEBUG_LOG_PATH}"`);
+      await loadDebugLog();
+      showToast("Log cleared.");
+    });
+
+    document.getElementById("openRepoBtn").addEventListener("click", () => openExternalUrl(REPO_URL));
+    document.getElementById("openUserBtn").addEventListener("click", () => openExternalUrl(USER_URL));
 
     // Theme picker (no reboot required)
     document.getElementById("themeGrid").addEventListener("click", (e) => {

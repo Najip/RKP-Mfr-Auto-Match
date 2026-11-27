@@ -7,6 +7,7 @@
 #include <sys/sysmacros.h>
 #include <sys/system_properties.h>
 #include <sys/types.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "zygisk.hpp"
@@ -16,6 +17,8 @@ namespace {
 constexpr const char *kRealMfrPath = "/data/adb/rkp_mfr_auto.real_mfr";
 constexpr const char *kConfPath = "/data/adb/rkp_mfr_auto.conf";
 constexpr const char *kExcludePath = "/data/adb/rkp_mfr_auto.exclude";
+constexpr const char *kDebugLogPath = "/data/adb/rkp_mfr_auto.log";
+constexpr off_t kMaxLogBytes = 256 * 1024;
 
 constexpr const char *kDefaultExcluded[] = {
     "com.google.android.GoogleCamera",
@@ -150,6 +153,31 @@ static bool is_whitelisted_package(const char *proc_name) {
     return false;
 }
 
+static void append_debug_log(const char *proc_name, const CompanionReply &reply, bool whitelisted) {
+    struct stat st{};
+    const char *mode = "a";
+    if (stat(kDebugLogPath, &st) == 0 && st.st_size > kMaxLogBytes) {
+        mode = "w";
+    }
+    FILE *lf = fopen(kDebugLogPath, mode);
+    if (!lf) return;
+    time_t now = time(nullptr);
+    struct tm tm_buf{};
+    localtime_r(&now, &tm_buf);
+    char ts[32] = {0};
+    strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", &tm_buf);
+    if (reply.should_restore) {
+        fprintf(lf, "[%s] [zygisk] %s -> RESTORE real_mfr=%s vendor=%u\n",
+                ts, proc_name, reply.real_mfr, static_cast<unsigned>(reply.restore_vendor));
+    } else if (whitelisted) {
+        fprintf(lf, "[%s] [zygisk] %s -> WHITELISTED_NO_REAL_MFR (dlclose)\n", ts, proc_name);
+    } else {
+        fprintf(lf, "[%s] [zygisk] %s -> DLCLOSE\n", ts, proc_name);
+    }
+    fclose(lf);
+    chmod(kDebugLogPath, 0644);
+}
+
 static void companion_handler(int fd) {
     CompanionReply reply{};
     uint32_t name_len = 0;
@@ -164,35 +192,37 @@ static void companion_handler(int fd) {
     }
     proc_name[name_len] = '\0';
 
+    bool spoof_vendor = false;
+    bool debug_log = false;
+    if (FILE *cf = fopen(kConfPath, "r")) {
+        char line[128];
+        while (fgets(line, sizeof(line), cf)) {
+            trim_line(line);
+            if (strcmp(line, "SPOOF_VENDOR_MFR=1") == 0) spoof_vendor = true;
+            else if (strcmp(line, "DEBUG_LOG=1") == 0) debug_log = true;
+        }
+        fclose(cf);
+    }
+
+    bool whitelisted = is_whitelisted_package(proc_name);
+
     // Only activate for whitelisted / fixed camera apps so normal apps (including detectors)
     // immediately dlclose this library and leave zero Zygisk maps behind.
-    if (!is_whitelisted_package(proc_name)) {
-        write_exact(fd, &reply, sizeof(reply));
-        return;
-    }
-
-    if (FILE *mf = fopen(kRealMfrPath, "r")) {
-        if (fgets(reply.real_mfr, sizeof(reply.real_mfr), mf)) {
-            trim_line(reply.real_mfr);
-            if (reply.real_mfr[0] != '\0') {
-                reply.should_restore = 1;
-            }
-        }
-        fclose(mf);
-    }
-
-    if (reply.should_restore) {
-        if (FILE *cf = fopen(kConfPath, "r")) {
-            char line[128];
-            while (fgets(line, sizeof(line), cf)) {
-                trim_line(line);
-                if (strcmp(line, "SPOOF_VENDOR_MFR=1") == 0) {
-                    reply.restore_vendor = 1;
-                    break;
+    if (whitelisted) {
+        if (FILE *mf = fopen(kRealMfrPath, "r")) {
+            if (fgets(reply.real_mfr, sizeof(reply.real_mfr), mf)) {
+                trim_line(reply.real_mfr);
+                if (reply.real_mfr[0] != '\0') {
+                    reply.should_restore = 1;
+                    reply.restore_vendor = spoof_vendor ? 1 : 0;
                 }
             }
-            fclose(cf);
+            fclose(mf);
         }
+    }
+
+    if (debug_log) {
+        append_debug_log(proc_name, reply, whitelisted);
     }
 
     write_exact(fd, &reply, sizeof(reply));

@@ -6,6 +6,7 @@ MFR_FILE="/data/adb/rkp_mfr_auto.mfr"
 REAL_MFR_FILE="/data/adb/rkp_mfr_auto.real_mfr"
 EXCLUDE_FILE="/data/adb/rkp_mfr_auto.exclude"
 REBOOT_FLAG="/data/adb/rkp_mfr_auto.reboot"
+DEBUG_LOG_FILE="/data/adb/rkp_mfr_auto.log"
 MODPROP="$MODDIR/module.prop"
 
 detect_zygisk_backend() {
@@ -54,12 +55,24 @@ detect_zygisk_backend() {
 
 ZYGISK_BACKEND=$(detect_zygisk_backend)
 
-# Default settings (vendor prop off by default)
+# Default settings (vendor prop and debug logging off by default)
 SPOOF_VENDOR_MFR=0
+DEBUG_LOG=0
 if [ -f "$CONF" ]; then
   . "$CONF"
 fi
 [ "$SPOOF_VENDOR_MFR" = "1" ] || SPOOF_VENDOR_MFR=0
+[ "$DEBUG_LOG" = "1" ] || DEBUG_LOG=0
+
+dlog() {
+  [ "$DEBUG_LOG" = "1" ] || return 0
+  if [ -f "$DEBUG_LOG_FILE" ]; then
+    sz=$(wc -c < "$DEBUG_LOG_FILE" 2>/dev/null || echo 0)
+    [ "${sz:-0}" -gt 262144 ] && : > "$DEBUG_LOG_FILE"
+  fi
+  printf '[%s] [sh] %s\n' "$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo boot)" "$*" >> "$DEBUG_LOG_FILE" 2>/dev/null
+  chmod 0644 "$DEBUG_LOG_FILE" 2>/dev/null
+}
 
 RP=""
 for bin in /data/adb/ksu/bin/resetprop /data/adb/ap/bin/resetprop /data/adb/magisk/resetprop; do
@@ -334,24 +347,45 @@ update_module_desc() {
   awk -v d="$DESC" 'BEGIN{done=0} /^description=/{print "description=" d; done=1; next} {print} END{if(!done) print "description=" d}' "$MODPROP" > "${MODPROP}.tmp" 2>/dev/null && mv "${MODPROP}.tmp" "$MODPROP"
 }
 
-list_packages_raw() {
+detect_pkg_tool() {
   if command -v pm >/dev/null 2>&1; then
-    pm list packages "$@" 2>/dev/null
+    echo "pm"
   elif [ -x /system/bin/pm ]; then
-    /system/bin/pm list packages "$@" 2>/dev/null
+    echo "/system/bin/pm"
   elif command -v cmd >/dev/null 2>&1; then
-    cmd package list packages "$@" 2>/dev/null
+    echo "cmd"
   elif [ -x /system/bin/cmd ]; then
-    /system/bin/cmd package list packages "$@" 2>/dev/null
+    echo "/system/bin/cmd"
+  else
+    echo "none"
   fi
+}
+
+list_packages_raw() {
+  tool="$1"
+  shift
+  case "$tool" in
+    pm) pm list packages "$@" 2>/dev/null ;;
+    /system/bin/pm) /system/bin/pm list packages "$@" 2>/dev/null ;;
+    cmd) cmd package list packages "$@" 2>/dev/null ;;
+    /system/bin/cmd) /system/bin/cmd package list packages "$@" 2>/dev/null ;;
+  esac
 }
 
 if [ "$1" = "--list-apps" ]; then
   SHOW_ALL=0
   [ "$2" = "all" ] && SHOW_ALL=1
+  PKG_TOOL=$(detect_pkg_tool)
+  USER_RAW=$(list_packages_raw "$PKG_TOOL" -3)
+  ALL_RAW=$(list_packages_raw "$PKG_TOOL")
+  if [ "$DEBUG_LOG" = "1" ]; then
+    u_cnt=$(printf '%s\n' "$USER_RAW" | grep -c '^package:' 2>/dev/null || echo 0)
+    a_cnt=$(printf '%s\n' "$ALL_RAW" | grep -c '^package:' 2>/dev/null || echo 0)
+    dlog "list-apps show_all=$SHOW_ALL tool=$PKG_TOOL user_cnt=$u_cnt all_cnt=$a_cnt path=$PATH"
+  fi
   {
-    list_packages_raw -3 | sed 's/^package:/U|/'
-    list_packages_raw | sed 's/^package:/A|/' | sort -u
+    printf '%s\n' "$USER_RAW" | sed -n 's/^package:/U|/p'
+    printf '%s\n' "$ALL_RAW" | sed -n 's/^package:/A|/p' | sort -u
   } | awk -F'|' -v show_all="$SHOW_ALL" -v efile="$EXCLUDE_FILE" '
     BEGIN {
       if (efile != "") {
@@ -404,6 +438,18 @@ if [ "$1" = "--status" ]; then
   PENDING_REBOOT=0
   [ -f "$REBOOT_FLAG" ] && PENDING_REBOOT=1
   update_module_desc
+  if [ "$DEBUG_LOG" = "1" ]; then
+    MODS=""
+    for d in /data/adb/modules/*; do
+      [ -d "$d" ] || continue
+      st="on"
+      [ -f "$d/disable" ] && st="off"
+      [ -f "$d/remove" ] && st="rm"
+      MODS="${MODS} ${d##*/}(${st})"
+    done
+    dlog "status zygisk=${ZYGISK_BACKEND:-missing} kb=${KB:-none} is_rkp=$IS_RKP mfr=${MFR:-none} rp=${RP:-none} vendor=$SPOOF_VENDOR_MFR"
+    dlog "modules:${MODS:- none}"
+  fi
   echo "KEYBOX_PATH=$KB"
   echo "IS_RKP=$IS_RKP"
   echo "RKP_MFR=$MFR"
@@ -411,6 +457,7 @@ if [ "$1" = "--status" ]; then
   echo "CUR_VENDOR_MFR=$(getprop ro.product.vendor.manufacturer 2>/dev/null)"
   echo "CUR_ATTEST_MFR=$(getprop ro.product.manufacturer_for_attestation 2>/dev/null)"
   echo "SPOOF_VENDOR_MFR=$SPOOF_VENDOR_MFR"
+  echo "DEBUG_LOG=$DEBUG_LOG"
   echo "ZYGISK_BACKEND=$ZYGISK_BACKEND"
   echo "PENDING_REBOOT=$PENDING_REBOOT"
   detect_apps
@@ -507,6 +554,8 @@ if [ -n "$RP" ]; then
 fi
 
 update_module_desc
+
+dlog "apply mode=${1:-boot} zygisk=${ZYGISK_BACKEND:-missing} kb=$KB mfr=$MFR real_mfr=${REAL_MFR:-none} rp=${RP:-none} vendor=$SPOOF_VENDOR_MFR"
 
 if [ "$1" = "--hot-apply" ]; then
   echo "Zygisk ($ZYGISK_BACKEND): hot-updated mfr=$MFR from $KB (camera apps excluded)" > "$LOG"
