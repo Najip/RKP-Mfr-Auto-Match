@@ -47,7 +47,7 @@ su -c "/data/adb/ksu/bin/busybox sh /data/adb/modules/rkp_mfr_auto/post-fs-data.
 ## WebUI
 
 Open the module WebUI from KSU / APatch Manager:
-- **Home**: shows Zygisk backend status, keybox type (tells you if it's not an RKP keybox so the module isn't needed), detected `map[3]` manufacturer, installed detector apps, a "Pixel Camera detected, fix applied" line when it applies, current props, boot log, and a **Hot Apply** button.
+- **Home**: shows Zygisk backend status, keybox type (tells you if it's not an RKP keybox so the module isn't needed), detected `map[3]` manufacturer, installed detector apps, a "Pixel Camera detected, fix applied" line when it applies, current props, a **Possible Conflicts** card (only shows up when another enabled module also touches the manufacturer props, or when the props got changed after us), boot log, and a **Hot Apply** button.
 - **Apps**: editable whitelist of installed apps excluded from spoofing (with search and a system-apps toggle; no reboot required). Pixel Camera is handled on its own and doesn't show up here.
 - **Settings**:
   - **Debug logging** (off by default; no reboot required) with **Capture Snapshot**, **Export to Download** (`/sdcard/Download/rkp_mfr_auto_log_<timestamp>.txt`), **Refresh**, **Copy**, and **Clear**.

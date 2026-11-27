@@ -94,6 +94,38 @@ dlog() {
   chmod 0644 "$DEBUG_LOG_FILE" 2>/dev/null
 }
 
+# Read-only check: other enabled modules that set the same manufacturer props.
+# Prints "module|file:line|sets or mentions|text". Nothing gets changed.
+CONFLICT_RE='ro\.product\.(vendor\.)?manufacturer(_for_attestation)?([^._a-zA-Z0-9]|$)'
+scan_conflicts() {
+  for d in /data/adb/modules/*; do
+    [ -d "$d" ] || continue
+    id="${d##*/}"
+    [ "$id" = "rkp_mfr_auto" ] && continue
+    [ -f "$d/disable" ] && continue
+    [ -f "$d/remove" ] && continue
+    for f in "$d"/system.prop "$d"/*.sh "$d"/common/*.sh "$d"/common/system.prop; do
+      [ -f "$f" ] || continue
+      grep -nE "$CONFLICT_RE" "$f" 2>/dev/null | head -n 5 | while IFS= read -r ln; do
+        num="${ln%%:*}"
+        txt=$(printf '%s' "${ln#*:}" | tr -d '\r' | sed 's/^[ \t]*//' | cut -c1-120 | tr '|;' '//')
+        case "$txt" in
+          "#"*) continue ;;
+        esac
+        kind="mentions"
+        case "$f" in
+          *system.prop) kind="sets" ;;
+        esac
+        case "$txt" in
+          *resetprop*|*setprop*) kind="sets" ;;
+          *getprop*) continue ;;
+        esac
+        echo "${id}|${f#$d/}:${num}|${kind}|${txt}"
+      done
+    done
+  done
+}
+
 RP=""
 for bin in /data/adb/ksu/bin/resetprop /data/adb/ap/bin/resetprop /data/adb/magisk/resetprop; do
   if [ -x "$bin" ]; then
@@ -506,6 +538,16 @@ if [ "$1" = "--export-log" ]; then
       echo "${d##*/} | $st | zygisk_dir=$has_z | $mname"
     done
     echo ""
+    echo "=== Possible Conflicts (other modules touching manufacturer props) ==="
+    CF=$(scan_conflicts)
+    if [ -n "$CF" ]; then printf '%s\n' "$CF"; else echo "(none found)"; fi
+    if [ "$IS_RKP" = "1" ] && [ -n "$MFR" ] && [ -n "$RP" ]; then
+      for cp in ro.product.manufacturer ro.product.manufacturer_for_attestation; do
+        cv=$(getprop "$cp" 2>/dev/null)
+        [ "$cv" != "$MFR" ] && echo "MISMATCH: $cp is '$cv' but should be '$MFR' (changed after us, or reboot pending)"
+      done
+    fi
+    echo ""
     echo "=== Auto-Detected Cameras ($CAM_AUTO_FILE) ==="
     if [ -f "$CAM_AUTO_FILE" ]; then cat "$CAM_AUTO_FILE"; else echo "(none)"; fi
     echo ""
@@ -599,6 +641,19 @@ if [ "$1" = "--status" ]; then
     dlog "status zygisk=${ZYGISK_BACKEND:-missing} kb=${KB:-none} is_rkp=$IS_RKP mfr=${MFR:-none} rp=${RP:-none} vendor=$SPOOF_VENDOR_MFR"
     dlog "modules:${MODS:- none}"
   fi
+  CF=$(scan_conflicts)
+  CF_ONE=$(printf '%s' "$CF" | tr '\n' ';')
+  PROP_MISMATCH=""
+  if [ "$IS_RKP" = "1" ] && [ -n "$MFR" ] && [ -n "$RP" ] && [ "$PENDING_REBOOT" = "0" ]; then
+    for cp in ro.product.manufacturer ro.product.manufacturer_for_attestation; do
+      cv=$(getprop "$cp" 2>/dev/null)
+      [ "$cv" != "$MFR" ] && PROP_MISMATCH="${PROP_MISMATCH}${cp}=${cv};"
+    done
+  fi
+  [ -n "$CF" ] && dlog "conflicts: $CF_ONE"
+  [ -n "$PROP_MISMATCH" ] && dlog "prop mismatch (want $MFR): $PROP_MISMATCH"
+  echo "CONFLICTS=$CF_ONE"
+  echo "PROP_MISMATCH=$PROP_MISMATCH"
   echo "KEYBOX_PATH=$KB"
   echo "IS_RKP=$IS_RKP"
   echo "RKP_MFR=$MFR"

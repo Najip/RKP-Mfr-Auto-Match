@@ -676,6 +676,11 @@
         <div id="appsContent" class="setting-desc">Checking installed apps...</div>
       </div>
 
+      <div class="card" id="conflictCard" style="display:none;">
+        <div class="card-title">Possible Conflicts</div>
+        <div id="conflictContent" class="setting-desc"></div>
+      </div>
+
       <div class="card">
         <div class="card-title">Current Props</div>
         <div class="kv-row">
@@ -985,6 +990,40 @@
       }
     }
 
+    function renderConflicts(raw, mismatchRaw, rkpMfr) {
+      const card = document.getElementById("conflictCard");
+      const box = document.getElementById("conflictContent");
+      const items = (raw || "").split(";").filter(Boolean).map((it) => {
+        const p = it.split("|");
+        return { mod: p[0] || "", where: p[1] || "", kind: p[2] || "", text: p.slice(3).join("|") };
+      }).filter((c) => c.mod);
+      const mism = (mismatchRaw || "").split(";").filter(Boolean);
+      if (items.length === 0 && mism.length === 0) {
+        card.style.display = "none";
+        box.innerHTML = "";
+        return;
+      }
+      let html = "";
+      if (mism.length > 0) {
+        html += '<div class="suggest-box caution"><div>';
+        mism.forEach((m) => {
+          const i = m.indexOf("=");
+          html += `<code>${escapeHtml(m.slice(0, i))}</code> is <b>${escapeHtml(m.slice(i + 1) || "(empty)")}</b> but should be <b>${escapeHtml(rkpMfr)}</b>.<br>`;
+        });
+        html += "Something changed it after this module. Check the modules listed here, or reboot if you just installed.</div></div>";
+      }
+      if (items.length > 0) {
+        html += '<div style="margin:8px 0;">These modules also touch the manufacturer props. If a detector still flags a mismatch, try disabling them one by one.</div><div class="app-list">';
+        items.forEach((c) => {
+          const pill = c.kind === "sets" ? '<span class="pill warn">Sets</span>' : '<span class="pill info">Mentions</span>';
+          html += `<div class="app-item"><div style="min-width:0;flex:1;"><div class="app-name">${escapeHtml(c.mod)}</div><div class="app-pkg">${escapeHtml(c.where)}</div><div class="app-pkg" style="word-break:break-all;">${escapeHtml(c.text)}</div></div>${pill}</div>`;
+        });
+        html += "</div>";
+      }
+      box.innerHTML = html;
+      card.style.display = "";
+    }
+
     async function loadStatus() {
       const res = await ksuExec(runScriptCmd("--status"));
       if (res.errno !== 0 && !res.stdout) {
@@ -1026,6 +1065,7 @@
       loadDebugLog();
 
       renderApps(detectedApps, pixelCam, pixelCamReason, isRkp, rkpMfr, spoofVendor);
+      renderConflicts(data.CONFLICTS || "", data.PROP_MISMATCH || "", rkpMfr);
 
       const kbTypeEl = document.getElementById("kbType");
       if (!zygiskBackend) {
