@@ -62,6 +62,22 @@ Open the module WebUI from KSU / APatch Manager:
   2. If the app still fails (usually because it is in KSU Unmount / Zygisk DenyList, which blocks Zygisk from injecting at all), turn on **Keep global `ro.product.manufacturer` stock** in WebUI **Settings** and reboot. That leaves `ro.product.manufacturer` untouched globally so DenyList apps see stock props with zero Zygisk maps, while non-whitelisted apps get stealth Java `Build.MANUFACTURER` spoofing.
   3. If you still hit issues, turn on **Enable debug log** in Settings, reproduce the issue once, tap **Export to Download**, and share the `.txt` file from `/sdcard/Download/`.
 
+## Roadmap
+
+Easiest first. Details in [docs/roadmap.md](docs/roadmap.md).
+
+- [x] Auto-read `map[3]` manufacturer from the keybox
+- [x] WebUI (Home / Apps / Settings, themes)
+- [x] Zygisk per-app restore, camera auto-detect, editable whitelist
+- [x] Stock global mode, debug log export
+- [x] Hot-install and KernelSU / Next update support
+- [ ] Attestation-only test mode
+- [ ] Props health check in WebUI
+- [ ] Report issue button with prefilled fields
+- [ ] Read-only keybox / OMK audit helper
+- [ ] Zygisk Next (ZN) API mode
+- [ ] Keep up with detector changes
+
 ## Credits
 
 - [dlagia](https://github.com/dlagia): original idea and RKP manufacturer fix script ([`archive/fix-rkp.sh`](archive/fix-rkp.sh)). This module grew from it.
