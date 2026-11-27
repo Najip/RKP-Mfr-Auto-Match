@@ -3,6 +3,7 @@ MODDIR="${0%/*}"
 LOG="$MODDIR/last.log"
 CONF="/data/adb/rkp_mfr_auto.conf"
 MFR_FILE="/data/adb/rkp_mfr_auto.mfr"
+EXCLUDE_FILE="/data/adb/rkp_mfr_auto.exclude"
 REBOOT_FLAG="/data/adb/rkp_mfr_auto.reboot"
 MODPROP="$MODDIR/module.prop"
 
@@ -320,6 +321,51 @@ update_module_desc() {
   fi
   awk -v d="$DESC" 'BEGIN{done=0} /^description=/{print "description=" d; done=1; next} {print} END{if(!done) print "description=" d}' "$MODPROP" > "${MODPROP}.tmp" 2>/dev/null && mv "${MODPROP}.tmp" "$MODPROP"
 }
+
+if [ "$1" = "--list-apps" ]; then
+  SHOW_ALL=0
+  [ "$2" = "all" ] && SHOW_ALL=1
+  ALL_PKGS=$(pm list packages 2>/dev/null | sed 's/^package://' | sort -u)
+  USER_PKGS=$(pm list packages -3 2>/dev/null | sed 's/^package://')
+  awk -v show_all="$SHOW_ALL" -v ulist="$USER_PKGS" -v efile="$EXCLUDE_FILE" '
+    BEGIN {
+      n = split(ulist, ua, "\n")
+      for (i = 1; i <= n; i++) if (ua[i] != "") is_user[ua[i]] = 1
+      if (efile != "") {
+        while ((getline line < efile) > 0) {
+          gsub(/\r/, "", line)
+          gsub(/^[ \t]+|[ \t]+$/, "", line)
+          if (line != "" && substr(line, 1, 1) != "#") is_excl[line] = 1
+        }
+        close(efile)
+      }
+    }
+    function is_fixed(p) {
+      if (index(p, "com.google.android.GoogleCamera") == 1) return 1
+      if (p == "com.google.android.apps.camera.services") return 1
+      if (p == "com.android.camera") return 1
+      if (p == "com.sec.android.app.camera") return 1
+      if (p == "com.oplus.camera") return 1
+      if (p == "com.oneplus.camera") return 1
+      if (p == "org.codeaurora.snapcam") return 1
+      if (p == "com.xiaomi.camera") return 1
+      return 0
+    }
+    {
+      p = $0
+      if (p == "") next
+      f = is_fixed(p)
+      u = (p in is_user) ? 1 : 0
+      e = (f || (p in is_excl)) ? 1 : 0
+      if (show_all || u || f || (p in is_excl)) {
+        printf "%s|%s|%d|%d\n", p, (u ? "user" : "sys"), f, e
+      }
+    }
+  ' <<EOF
+$ALL_PKGS
+EOF
+  exit 0
+fi
 
 if [ "$1" = "--mark-reboot" ]; then
   touch "$REBOOT_FLAG" 2>/dev/null

@@ -562,13 +562,44 @@
       cursor: pointer;
       flex-shrink: 0;
     }
+
+    .search-input {
+      width: 100%;
+      background: var(--surface-alt);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-size: 14px;
+      outline: none;
+      margin-bottom: 10px;
+    }
+
+    .search-input:focus {
+      border-color: var(--accent);
+    }
+
+    .filter-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .switch input:disabled + .slider {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <header>
       <div>
-        <h1>RKP Manufacturer</h1>
+        <h1>RKP Manufacturer Auto-Match</h1>
         <div class="subtitle">rkp_mfr_auto</div>
       </div>
       <div class="header-actions">
@@ -641,6 +672,25 @@
       </div>
     </section>
 
+    <!-- APPS TAB -->
+    <section id="tab-apps" class="tab-panel">
+      <div class="card">
+        <div class="card-title">App Whitelist (Excluded from Spoofing)</div>
+        <div class="setting-desc" style="margin-bottom: 10px;">
+          Only installed apps are shown. Turn on an app to keep its real manufacturer (no spoofing). Pixel Camera and Google camera apps are fixed so they never crash. Changes apply on next app restart (no reboot required).
+        </div>
+        <input type="search" id="appSearch" class="search-input" placeholder="Search installed package..." />
+        <div class="filter-row">
+          <span id="appCountText">Loading installed apps...</span>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <span>Show system apps</span>
+            <input type="checkbox" id="showSystemToggle" />
+          </label>
+        </div>
+        <div id="whitelistContainer" class="app-list"></div>
+      </div>
+    </section>
+
     <!-- SETTINGS TAB -->
     <section id="tab-settings" class="tab-panel">
       <div class="card">
@@ -693,6 +743,15 @@
         </svg>
         Home
       </button>
+      <button type="button" class="nav-btn" data-tab="apps">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="7" rx="1.5" />
+          <rect x="14" y="3" width="7" height="7" rx="1.5" />
+          <rect x="3" y="14" width="7" height="7" rx="1.5" />
+          <rect x="14" y="14" width="7" height="7" rx="1.5" />
+        </svg>
+        Apps
+      </button>
       <button type="button" class="nav-btn" data-tab="settings">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3" />
@@ -708,9 +767,12 @@
   <script>
     const SCRIPT_PATH = "/data/adb/modules/rkp_mfr_auto/post-fs-data.sh";
     const CONF_PATH = "/data/adb/rkp_mfr_auto.conf";
+    const EXCLUDE_PATH = "/data/adb/rkp_mfr_auto.exclude";
     const THEME_KEY = "rkp_mfr_auto_theme";
     let cbCounter = 0;
     let toastTimer = null;
+    let installedApps = [];
+    let appsLoaded = false;
 
     function runScriptCmd(arg) {
       return `if [ -x /data/adb/ksu/bin/busybox ]; then /data/adb/ksu/bin/busybox sh "${SCRIPT_PATH}" ${arg}; else sh "${SCRIPT_PATH}" ${arg}; fi`;
@@ -755,6 +817,9 @@
     function switchTab(target) {
       document.querySelectorAll(".nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.tab === target));
       document.querySelectorAll(".tab-panel").forEach((p) => p.classList.toggle("active", p.id === "tab-" + target));
+      if (target === "apps" && !appsLoaded) {
+        loadInstalledApps();
+      }
     }
 
     function applyTheme(theme, notify) {
@@ -921,6 +986,102 @@
         );
       }
     }
+
+    async function loadInstalledApps() {
+      const container = document.getElementById("whitelistContainer");
+      const countEl = document.getElementById("appCountText");
+      const showSys = document.getElementById("showSystemToggle").checked;
+      countEl.textContent = "Loading installed apps...";
+      const res = await ksuExec(runScriptCmd(showSys ? "--list-apps all" : "--list-apps"));
+      if (res.errno !== 0 && !res.stdout) {
+        countEl.textContent = "Could not list installed apps.";
+        container.innerHTML = "";
+        return;
+      }
+      appsLoaded = true;
+      installedApps = res.stdout.split("\n").filter(Boolean).map((line) => {
+        const parts = line.split("|");
+        return {
+          pkg: parts[0] || "",
+          type: parts[1] || "user",
+          fixed: parts[2] === "1",
+          excluded: parts[3] === "1"
+        };
+      }).filter((a) => a.pkg);
+
+      // Sort: fixed first, then user-excluded, then alphabetical
+      installedApps.sort((a, b) => {
+        if (a.fixed !== b.fixed) return a.fixed ? -1 : 1;
+        if (a.excluded !== b.excluded) return a.excluded ? -1 : 1;
+        return a.pkg.localeCompare(b.pkg);
+      });
+      renderWhitelist();
+    }
+
+    function renderWhitelist() {
+      const container = document.getElementById("whitelistContainer");
+      const countEl = document.getElementById("appCountText");
+      const q = (document.getElementById("appSearch").value || "").trim().toLowerCase();
+      const filtered = q
+        ? installedApps.filter((a) => a.pkg.toLowerCase().includes(q))
+        : installedApps;
+
+      const excludedCount = installedApps.filter((a) => a.excluded).length;
+      countEl.textContent = `${filtered.length} installed (${excludedCount} excluded)`;
+
+      if (filtered.length === 0) {
+        container.innerHTML = '<div class="setting-desc">No matching installed apps.</div>';
+        return;
+      }
+
+      let html = "";
+      filtered.forEach((a) => {
+        const badge = a.fixed
+          ? '<span class="pill warn">Fixed</span>'
+          : (a.type === "sys" ? '<span class="pill info">System</span>' : "");
+        html += `
+          <div class="app-item">
+            <div style="min-width:0;flex:1;">
+              <div class="app-pkg" style="color:var(--text);font-size:12px;">${escapeHtml(a.pkg)}</div>
+              ${badge ? `<div style="margin-top:4px;">${badge}</div>` : ""}
+            </div>
+            <label class="switch">
+              <input type="checkbox" class="wl-toggle" data-pkg="${escapeHtml(a.pkg)}" ${a.excluded ? "checked" : ""} ${a.fixed ? "disabled" : ""} />
+              <span class="slider"></span>
+            </label>
+          </div>
+        `;
+      });
+      container.innerHTML = html;
+    }
+
+    async function saveExcludeList() {
+      const custom = installedApps
+        .filter((a) => a.excluded && !a.fixed)
+        .map((a) => a.pkg)
+        .filter((p) => /^[a-zA-Z0-9._-]+$/.test(p));
+      const payload = custom.join("\\n") + (custom.length ? "\\n" : "");
+      const res = await ksuExec(`printf '${payload}' > "${EXCLUDE_PATH}" && chmod 0644 "${EXCLUDE_PATH}" 2>/dev/null`);
+      if (res.errno === 0) {
+        showToast("Saved. Restart app to apply. No reboot required.");
+      } else {
+        showToast("Failed to save whitelist.");
+      }
+      renderWhitelist();
+    }
+
+    // App whitelist search & system toggle
+    document.getElementById("appSearch").addEventListener("input", renderWhitelist);
+    document.getElementById("showSystemToggle").addEventListener("change", () => loadInstalledApps());
+    document.getElementById("whitelistContainer").addEventListener("change", async (e) => {
+      const cb = e.target.closest(".wl-toggle");
+      if (!cb || cb.disabled) return;
+      const pkg = cb.dataset.pkg;
+      const item = installedApps.find((a) => a.pkg === pkg);
+      if (!item || item.fixed) return;
+      item.excluded = cb.checked;
+      await saveExcludeList();
+    });
 
     // Tab switching
     document.querySelectorAll(".nav-btn").forEach((btn) => {

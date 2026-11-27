@@ -4,4 +4,4 @@ version=v0.3.0-pre.1
 versionCode=1
 author=Najip
 description=Auto-detect RKP keybox manufacturer (map[3]) and match props at boot
-updateJson=https://raw.githubusercontent.com/Najip/rkp-mfr-auto/main/update.json
+updateJson=https://raw.githubusercontent.com/Najip/RKP-Mfr-Auto-Match/main/update.json

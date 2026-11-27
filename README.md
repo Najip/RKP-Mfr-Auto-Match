@@ -1,4 +1,4 @@
-# rkp-mfr-auto
+# RKP Manufacturer Auto-Match
 
 Simple KSU / APatch / Magisk module to auto-match manufacturer props with your active RKP keybox.
 
@@ -40,8 +40,9 @@ su -c "/data/adb/ksu/bin/busybox sh /data/adb/modules/rkp_mfr_auto/post-fs-data.
 ## WebUI
 
 Open the module WebUI from KSU / APatch Manager:
-- **Home**: shows keybox type (tells you if it's not an RKP keybox so the module isn't needed), detected `map[3]` manufacturer, installed detector / Pixel Camera apps (suggests turning on `ro.product.vendor.manufacturer` if needed), current props, boot log, and a **Hot Apply** button.
-- **Settings**: toggle `ro.product.vendor.manufacturer` (off by default; shows a reboot toast when changed) and pick the color theme (`System`, `Light`, `Dark`, `AMOLED` — no reboot required).
+- **Home**: shows Zygisk backend status, keybox type (tells you if it's not an RKP keybox so the module isn't needed), detected `map[3]` manufacturer, installed detector / Pixel Camera apps, current props, boot log, and a **Hot Apply** button.
+- **Apps**: editable whitelist of installed apps excluded from spoofing (with search and a system-apps toggle; Pixel Camera and Google/OEM camera apps are fixed so they never crash; no reboot required).
+- **Settings**: toggle `ro.product.vendor.manufacturer` (off by default; shows a persistent waiting-for-reboot banner when changed) and pick the color theme (`System`, `Light`, `Dark`, `AMOLED` — no reboot required).
 
 ## Note on Pixel Camera / camera crashes
 
