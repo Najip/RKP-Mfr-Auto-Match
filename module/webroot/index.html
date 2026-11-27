@@ -831,7 +831,7 @@
       const kbTypeEl = document.getElementById("kbType");
       if (!kbPath) {
         kbTypeEl.innerHTML = '<span class="pill warn">Missing</span>';
-        setBanner("warn", "No keybox.xml found", "Checked /data/misc/keystore/omk/keybox.xml and /data/adb/tricky_store/keybox.xml.");
+        setBanner("warn", "No keybox.xml found", "Checked OMK (/data/misc/keystore/omk), TEESimulator (/data/adb/teesim), and TrickyStore (/data/adb/tricky_store).");
       } else if (!isRkp) {
         kbTypeEl.innerHTML = '<span class="pill info">Non-RKP</span>';
         setBanner(

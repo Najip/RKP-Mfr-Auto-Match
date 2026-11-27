@@ -19,19 +19,23 @@ for bin in /data/adb/ksu/bin/resetprop /data/adb/ap/bin/resetprop /data/adb/magi
 done
 [ -n "$RP" ] || RP=$(command -v resetprop 2>/dev/null)
 
-KB=""
-for f in /data/misc/keystore/omk/keybox.xml /data/adb/tricky_store/keybox.xml; do
-  if [ -f "$f" ]; then
-    KB="$f"
-    break
+# Collect candidate keybox paths across OMK, TEESimulator (teesim), TrickyStore / TEESimulator-RS
+CANDIDATES="/data/misc/keystore/omk/keybox.xml"
+
+if [ -f /data/adb/teesim/config.json ]; then
+  TEESIM_KB=$(sed -n 's/.*"keybox"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' /data/adb/teesim/config.json | head -n 1)
+  if [ -n "$TEESIM_KB" ]; then
+    case "$TEESIM_KB" in
+      /*) CANDIDATES="$CANDIDATES $TEESIM_KB" ;;
+      *)  CANDIDATES="$CANDIDATES /data/adb/teesim/$TEESIM_KB" ;;
+    esac
   fi
-done
+fi
 
-IS_RKP=0
-MFR=""
+CANDIDATES="$CANDIDATES /data/adb/teesim/keybox.xml /data/adb/tricky_store/keybox.xml /data/adb/omk/keybox.xml /data/adb/TEESimulator/keybox.xml"
 
-if [ -n "$KB" ]; then
-  PARSE_OUT=$(awk '
+parse_keybox() {
+  awk '
     {
       gsub(/\r/, "")
       while (length($0) > 0) {
@@ -57,7 +61,7 @@ if [ -n "$KB" ]; then
         }
       }
     }
-  ' "$KB" | while IFS= read -r b64; do
+  ' "$1" | while IFS= read -r b64; do
     [ -z "$b64" ] && continue
     res=$(printf '%s\n' "$b64" | base64 -d 2>/dev/null | od -An -tx1 -v | awk '
       function hex2dec(h,    i, c, v) {
@@ -194,15 +198,28 @@ if [ -n "$KB" ]; then
         break
         ;;
     esac
-  done)
+  done
+}
 
+KB=""
+IS_RKP=0
+MFR=""
+
+for f in $CANDIDATES; do
+  [ -f "$f" ] || continue
+  PARSE_OUT=$(parse_keybox "$f")
   case "$PARSE_OUT" in
     RKP:*)
+      KB="$f"
       IS_RKP=1
       MFR="${PARSE_OUT#RKP:}"
+      [ -n "$MFR" ] && break
+      ;;
+    *)
+      [ -z "$KB" ] && KB="$f"
       ;;
   esac
-fi
+done
 
 detect_apps() {
   PKGS=$(pm list packages 2>/dev/null | sed 's/^package://')

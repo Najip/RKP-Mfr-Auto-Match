@@ -9,7 +9,7 @@ if [ -d /data/adb/modules/rkp_nubia ] && [ ! -f /data/adb/modules/rkp_nubia/disa
 fi
 
 KB=""
-for f in /data/misc/keystore/omk/keybox.xml /data/adb/tricky_store/keybox.xml; do
+for f in /data/misc/keystore/omk/keybox.xml /data/adb/teesim/keybox.xml /data/adb/tricky_store/keybox.xml /data/adb/omk/keybox.xml /data/adb/TEESimulator/keybox.xml; do
   if [ -f "$f" ]; then
     KB="$f"
     break

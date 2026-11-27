@@ -10,7 +10,9 @@ Only tested with [ITxiao6666/OhMyKeymint](https://github.com/ITxiao6666/OhMyKeym
 
 On boot (`post-fs-data`), it checks:
 - `/data/misc/keystore/omk/keybox.xml` (OhMyKeymint)
-- `/data/adb/tricky_store/keybox.xml` (fallback)
+- `/data/adb/teesim/keybox.xml` and custom keybox path in `/data/adb/teesim/config.json` (JingMatrix TEESimulator)
+- `/data/adb/tricky_store/keybox.xml` (TrickyStore / TEESimulator-RS / older TEESimulator)
+- `/data/adb/omk/keybox.xml` and `/data/adb/TEESimulator/keybox.xml` (fallback)
 
 It grabs the RKP manufacturer from the cert extension (`1.3.6.1.4.1.11129.2.1.30`, `map[3]`) using BusyBox `awk`/`base64`/`od`, then sets:
 - `ro.product.manufacturer`
