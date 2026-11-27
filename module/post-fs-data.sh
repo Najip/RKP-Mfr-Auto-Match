@@ -484,6 +484,75 @@ if [ "$1" = "--scan-cams" ]; then
   exit 0
 fi
 
+if [ "$1" = "--export-log" ]; then
+  OUT_DIR="/sdcard/Download"
+  [ -d "$OUT_DIR" ] || OUT_DIR="/storage/emulated/0/Download"
+  mkdir -p "$OUT_DIR" 2>/dev/null
+  TS=$(date '+%Y%m%d_%H%M%S' 2>/dev/null || echo "latest")
+  OUT_FILE="$OUT_DIR/rkp_mfr_auto_log_${TS}.txt"
+  {
+    echo "=== RKP Manufacturer Auto-Match Diagnostic Log ==="
+    echo "Generated: $(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo unknown)"
+    if [ -f "$MODPROP" ]; then
+      grep -E '^(id|name|version|versionCode)=' "$MODPROP" 2>/dev/null
+    fi
+    echo "Android: $(getprop ro.build.version.release 2>/dev/null) (SDK $(getprop ro.build.version.sdk 2>/dev/null))"
+    echo "Device: $(getprop ro.product.brand 2>/dev/null) / $(getprop ro.product.model 2>/dev/null) / $(getprop ro.product.device 2>/dev/null)"
+    echo "ABI: $(getprop ro.product.cpu.abi 2>/dev/null)"
+    echo ""
+    echo "=== Status ==="
+    echo "ZYGISK_BACKEND=${ZYGISK_BACKEND:-missing}"
+    echo "KEYBOX_PATH=${KB:-none}"
+    echo "IS_RKP=$IS_RKP"
+    echo "RKP_MFR=${MFR:-none}"
+    echo "REAL_MFR=$(head -n 1 "$REAL_MFR_FILE" 2>/dev/null)"
+    echo "CUR_MFR=$(getprop ro.product.manufacturer 2>/dev/null)"
+    echo "CUR_VENDOR_MFR=$(getprop ro.product.vendor.manufacturer 2>/dev/null)"
+    echo "CUR_ATTEST_MFR=$(getprop ro.product.manufacturer_for_attestation 2>/dev/null)"
+    echo "SPOOF_VENDOR_MFR=$SPOOF_VENDOR_MFR"
+    echo "DEBUG_LOG=$DEBUG_LOG"
+    echo "RESETPROP=${RP:-none}"
+    echo "LAST_LOG=$(head -n 1 "$LOG" 2>/dev/null)"
+    echo ""
+    echo "=== Package Listing Check ==="
+    PKG_TOOL=$(detect_pkg_tool)
+    U_RAW=$(list_packages_raw "$PKG_TOOL" -3)
+    A_RAW=$(list_packages_raw "$PKG_TOOL")
+    echo "PKG_TOOL=$PKG_TOOL"
+    echo "PATH=$PATH"
+    echo "USER_PKG_COUNT=$(printf '%s\n' "$U_RAW" | grep -c '^package:' 2>/dev/null || echo 0)"
+    echo "ALL_PKG_COUNT=$(printf '%s\n' "$A_RAW" | grep -c '^package:' 2>/dev/null || echo 0)"
+    echo ""
+    echo "=== Installed Modules ==="
+    for d in /data/adb/modules/*; do
+      [ -d "$d" ] || continue
+      st="enabled"
+      [ -f "$d/disable" ] && st="disabled"
+      [ -f "$d/remove" ] && st="remove"
+      mname=$(grep -iE '^name=' "$d/module.prop" 2>/dev/null | head -n 1 | cut -d= -f2-)
+      has_z="no"
+      [ -d "$d/zygisk" ] && has_z="yes"
+      echo "${d##*/} | $st | zygisk_dir=$has_z | $mname"
+    done
+    echo ""
+    echo "=== Auto-Detected Cameras ($CAM_AUTO_FILE) ==="
+    if [ -f "$CAM_AUTO_FILE" ]; then cat "$CAM_AUTO_FILE"; else echo "(none)"; fi
+    echo ""
+    echo "=== Custom Whitelist ($EXCLUDE_FILE) ==="
+    if [ -f "$EXCLUDE_FILE" ]; then cat "$EXCLUDE_FILE"; else echo "(none)"; fi
+    echo ""
+    echo "=== Debug Log ($DEBUG_LOG_FILE) ==="
+    if [ -f "$DEBUG_LOG_FILE" ]; then cat "$DEBUG_LOG_FILE"; else echo "(empty)"; fi
+  } > "$OUT_FILE" 2>/dev/null
+  if [ -f "$OUT_FILE" ]; then
+    echo "$OUT_FILE"
+    exit 0
+  else
+    echo "Failed to write $OUT_FILE" >&2
+    exit 1
+  fi
+fi
+
 if [ "$1" = "--list-apps" ]; then
   SHOW_ALL=0
   [ "$2" = "all" ] && SHOW_ALL=1

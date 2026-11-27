@@ -726,6 +726,7 @@
         <div id="debugLogPanel" style="margin-top:12px;">
           <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
             <button type="button" class="btn-chip" id="captureLogBtn">Capture Snapshot</button>
+            <button type="button" class="btn-chip" id="exportLogBtn">Export to Download</button>
             <button type="button" class="btn-chip" id="refreshLogBtn">Refresh</button>
             <button type="button" class="btn-chip" id="copyLogBtn">Copy</button>
             <button type="button" class="btn-chip" id="clearLogBtn">Clear</button>
@@ -1196,6 +1197,16 @@
       await ksuExec(`${runScriptCmd("--status")} >/dev/null 2>&1; ${runScriptCmd("--list-apps")} >/dev/null 2>&1`);
       await loadDebugLog();
       showToast("Diagnostic snapshot captured.");
+    });
+
+    document.getElementById("exportLogBtn").addEventListener("click", async () => {
+      const res = await ksuExec(runScriptCmd("--export-log"));
+      const outPath = (res.stdout || "").trim();
+      if (res.errno === 0 && outPath) {
+        showToast("Saved to " + outPath);
+      } else {
+        showToast((res.stderr || "").trim() || "Failed to export log.");
+      }
     });
 
     document.getElementById("refreshLogBtn").addEventListener("click", async () => {
