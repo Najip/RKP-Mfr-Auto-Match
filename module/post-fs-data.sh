@@ -404,6 +404,11 @@ is_pixel_rom() {
   printf '%s\n' "$feats" | grep -qE 'com\.google\.android\.feature\.PIXEL(_[0-9]{4})?_EXPERIENCE' && return 0
   grep -qsE 'com\.google\.android\.feature\.PIXEL(_[0-9]{4})?_EXPERIENCE' \
     /product/etc/sysconfig/*.xml /system/etc/sysconfig/*.xml /system_ext/etc/sysconfig/*.xml 2>/dev/null && return 0
+  # PixelOS sets this even if it ships without the Google feature xmls
+  [ -n "$(getprop net.pixelos.version)" ] && return 0
+  # Pixel Camera baked into the ROM itself (not sideloaded) = Pixel based ROM
+  # (-s still lists it after a Play Store update)
+  pm list packages -s 2>/dev/null | grep -qx "package:$PIXEL_CAM_PKG" && return 0
   return 1
 }
 

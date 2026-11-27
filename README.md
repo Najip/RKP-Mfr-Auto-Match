@@ -56,7 +56,7 @@ Open the module WebUI from KSU / APatch Manager:
 
 ## Notes on Pixel Camera & strict banking / UPI apps
 
-- **Pixel Camera**: detected only on a real Pixel (brand / system manufacturer is `google`) or a Pixel based ROM (`com.google.android.feature.PIXEL_EXPERIENCE`). Check Home for "Pixel Camera detected, fix applied". If some other camera app crashes for you, just turn it on in the **Apps** whitelist. Keep `ro.product.vendor.manufacturer` off unless a detector flags it.
+- **Pixel Camera**: detected only on a real Pixel (brand / system manufacturer is `google`) or a Pixel based ROM like PixelOS (has the Google `com.google.android.feature.PIXEL_EXPERIENCE` flag, `net.pixelos.version` is set, or Pixel Camera comes preinstalled in the ROM). Check Home for "Pixel Camera detected, fix applied". If some other camera app crashes for you, just turn it on in the **Apps** whitelist. Keep `ro.product.vendor.manufacturer` off unless a detector flags it.
 - **Strict banking / UPI apps**:
   1. First, try toggling the app on in the **Apps** whitelist and force-stopping/reopening it. User-whitelisted apps use stealth Java restore + immediate `dlclose` so no Zygisk `.so` stays mapped in memory.
   2. If the app still fails (usually because it is in KSU Unmount / Zygisk DenyList, which blocks Zygisk from injecting at all), turn on **Keep global `ro.product.manufacturer` stock** in WebUI **Settings** and reboot. That leaves `ro.product.manufacturer` untouched globally so DenyList apps see stock props with zero Zygisk maps, while non-whitelisted apps get stealth Java `Build.MANUFACTURER` spoofing.
