@@ -31,6 +31,12 @@ Test detection without changing props:
 su -c "/data/adb/ksu/bin/busybox sh /data/adb/modules/rkp_mfr_auto/post-fs-data.sh --dry-run"
 ```
 
+## WebUI
+
+Open the module WebUI from KSU / APatch Manager:
+- **Home**: shows your active keybox type (warns you if it's not an RKP keybox so the module isn't needed), detected `map[3]` manufacturer, current props, and boot log.
+- **Settings**: toggle `ro.product.vendor.manufacturer` on/off (shows a toast to reboot after changing) and pick the WebUI color theme (`System`, `Light`, `Dark`, `AMOLED`).
+
 ## Note on Pixel Camera / camera crashes
 
 Since `resetprop` changes `ro.product.manufacturer` globally, some camera apps (like Pixel Camera / `com.google.android.GoogleCamera` or OEM cameras that check `Build.MANUFACTURER`) might crash on launch.
