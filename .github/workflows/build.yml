@@ -115,13 +115,14 @@ jobs:
           mkdir -p module/zygisk
           cp zygisk/libs/arm64-v8a/librkp_mfr_auto.so module/zygisk/arm64-v8a.so
           cp zygisk/libs/armeabi-v7a/librkp_mfr_auto.so module/zygisk/armeabi-v7a.so
+          sha256sum zygisk/jni/main.cpp zygisk/jni/zygisk.hpp zygisk/jni/Android.mk zygisk/jni/Application.mk > module/zygisk/src.sha256
           ls -lh module/zygisk/
 
       - name: Stamp module.prop and build flashable ZIP
         run: |
           sed -i "s/^version=.*/version=${{ steps.meta.outputs.tag }}/" module/module.prop
           sed -i "s/^versionCode=.*/versionCode=${{ steps.meta.outputs.version_code }}/" module/module.prop
-          chmod 755 module/post-fs-data.sh module/META-INF/com/google/android/update-binary
+          chmod 755 module/post-fs-data.sh module/service.sh module/META-INF/com/google/android/update-binary
           (cd module && zip -r9 "../${{ steps.meta.outputs.zip_name }}" .)
           unzip -l "${{ steps.meta.outputs.zip_name }}"
 
