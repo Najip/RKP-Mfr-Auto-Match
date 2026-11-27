@@ -11,24 +11,39 @@ DEBUG_LOG_FILE="/data/adb/rkp_mfr_auto.log"
 MODPROP="$MODDIR/module.prop"
 
 detect_zygisk_backend() {
+  # 1. Built-in NyaZygisk in SukiSU Nova (suppresses external providers in memory when enabled)
+  if [ -x /data/adb/ksud ] && [ ! -f /data/adb/ksu/zygisk.json ] && [ ! -f /data/adb/ksu/bin/folkzygisk ]; then
+    zs=$(/data/adb/ksud zygisk status 2>/dev/null)
+    if printf '%s\n' "$zs" | grep -qiE '"(enabled|fully_active|zygote_injected)"[[:space:]]*:[[:space:]]*true|^[[:space:]]*(enabled|active)[[:space:]]*:[[:space:]]*(true|yes|on|1)\b'; then
+      echo "NyaZygisk (built-in)"
+      return
+    fi
+  fi
+
+  # 2. Known external Zygisk provider modules (read module.prop name so forks like BreZygisk show right)
   for pair in \
     "rezygisk|ReZygisk" \
     "zygisksu|Zygisk Next" \
     "brezygisk|BreZygisk" \
     "BreZygisk|BreZygisk" \
-    "neozygisk|NeoZygisk"
+    "neozygisk|NeoZygisk" \
+    "nyazygisk|NyaZygisk" \
+    "yukizygisk|YukiZygisk" \
+    "nextzygisk|NextZygisk" \
+    "NextZygisk|NextZygisk"
   do
     id="${pair%%|*}"
     label="${pair#*|}"
     d="/data/adb/modules/$id"
     if [ -d "$d" ] && [ ! -f "$d/disable" ] && [ ! -f "$d/remove" ]; then
-      # Forks like BreZygisk keep the "rezygisk" folder id; read module.prop name first
       mname=""
       [ -f "$d/module.prop" ] && mname=$(grep -iE '^name=' "$d/module.prop" 2>/dev/null | head -n 1 | cut -d= -f2- | tr -d '\r' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
       echo "${mname:-$label}"
       return
     fi
   done
+
+  # 3. Built-in Magisk Zygisk (Magisk and forks)
   if command -v magisk >/dev/null 2>&1; then
     ZVAL=$(magisk --sqlite "SELECT value FROM settings WHERE key='zygisk';" 2>/dev/null | sed 's/.*=//')
     if [ "$ZVAL" = "1" ]; then
@@ -36,6 +51,27 @@ detect_zygisk_backend() {
       return
     fi
   fi
+
+  # 4. Built-in FolkZygisk in FinaSU (stands down automatically when an external provider is active)
+  if [ -f /data/adb/ksu/zygisk.json ] && grep -qE '"enabled"[[:space:]]*:[[:space:]]*true' /data/adb/ksu/zygisk.json 2>/dev/null; then
+    echo "FolkZygisk (built-in)"
+    return
+  fi
+
+  # 5. Built-in YukiZygisk in YukiSU
+  if [ -x /data/adb/ksud ]; then
+    yz=$(/data/adb/ksud yzctl status --json 2>/dev/null)
+    if printf '%s\n' "$yz" | grep -qiE '"(enabled|feature_enabled|injected)"[[:space:]]*:[[:space:]]*true|"zygote"[[:space:]]*:[[:space:]]*"injected"'; then
+      echo "YukiZygisk (built-in)"
+      return
+    fi
+  fi
+  if [ -f /data/adb/ksu/yukizygisk/yzconfig.json ] && grep -qE '"enabled"[[:space:]]*:[[:space:]]*true' /data/adb/ksu/yukizygisk/yzconfig.json 2>/dev/null; then
+    echo "YukiZygisk (built-in)"
+    return
+  fi
+
+  # 6. Generic external Zygisk provider scan (skipping consumer modules with zygisk/)
   for d in /data/adb/modules/*; do
     [ -d "$d" ] || continue
     [ -f "$d/disable" ] && continue
@@ -45,7 +81,7 @@ detect_zygisk_backend() {
     bname="${d##*/}"
     [ "$bname" = "rkp_mfr_auto" ] && continue
     mname=""
-    [ -f "$d/module.prop" ] && mname=$(grep -iE '^name=' "$d/module.prop" 2>/dev/null | head -n 1 | cut -d= -f2-)
+    [ -f "$d/module.prop" ] && mname=$(grep -iE '^name=' "$d/module.prop" 2>/dev/null | head -n 1 | cut -d= -f2- | tr -d '\r' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
     # Structural check: real Zygisk providers ship libzygisk.so or zygiskd/zygisk binaries
     for f in "$d"/lib64/libzygisk*.so "$d"/lib/libzygisk*.so "$d"/bin/*zygisk* "$d"/zygiskd; do
       if [ -f "$f" ]; then
@@ -61,11 +97,14 @@ detect_zygisk_backend() {
         ;;
     esac
   done
-  # Runtime daemon fallback (if a Zygisk provider runs outside /data/adb/modules)
-  if pidof zygiskd >/dev/null 2>&1 || pidof zygiskd64 >/dev/null 2>&1; then
-    echo "Zygisk (active)"
-    return
-  fi
+
+  # 7. Runtime daemon fallback (Zygisk providers running outside /data/adb/modules)
+  for proc in zygiskd zygiskd64 zygiskd32 zn-daemon folkzygisk nyazygiskd yukizygiskd; do
+    if pidof "$proc" >/dev/null 2>&1; then
+      echo "Zygisk (active)"
+      return
+    fi
+  done
   echo ""
 }
 
