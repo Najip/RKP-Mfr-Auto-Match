@@ -20,7 +20,6 @@ It grabs the RKP manufacturer from the cert extension (`1.3.6.1.4.1.11129.2.1.30
 - **Default mode**: sets `ro.product.manufacturer` and `ro.product.manufacturer_for_attestation` to the RKP manufacturer via `resetprop -n` so detectors pass natively while our Zygisk `.so` immediately calls `DLCLOSE_MODULE_LIBRARY` (leaving zero Zygisk maps in normal apps / detectors).
 - **Pixel Camera**: only the real Pixel Camera (`com.google.android.GoogleCamera`) on a real Google Pixel or a Pixel based ROM gets your stock manufacturer back (`Build.MANUFACTURER` + native props) so it doesn't crash. GCam ports and OEM cameras are left alone, they don't need it.
 - **User-whitelisted apps**: any app you toggle on in the WebUI **Apps** tab (saved in `/data/adb/rkp_mfr_auto.exclude`) gets a stealth Java `Build.MANUFACTURER` restore and immediately calls `DLCLOSE_MODULE_LIBRARY` so no resident PLT hook or `.so` map is left in `/proc/self/maps`.
-- **Stock global mode (for DenyList / banking / UPI apps)**: optional toggle in WebUI **Settings** (**Keep global `ro.product.manufacturer` stock**, off by default, requires reboot). Turn this on if a banking/UPI app on KSU Unmount / DenyList (where Zygisk never injects) breaks whenever global `ro.product.manufacturer` is changed.
 - Updates the module description on the KSU / APatch / Magisk module page with the detected Zygisk backend and RKP status.
 
 If your keybox is not RKP (no `map[3]`) or your phone already matches, it won't touch anything.
@@ -49,18 +48,15 @@ Open the module WebUI from KSU / APatch Manager:
 - **Home**: shows Zygisk backend status, keybox type (tells you if it's not an RKP keybox so the module isn't needed), detected `map[3]` manufacturer, installed detector apps, a "Pixel Camera detected, fix applied" line when it applies, current props, boot log, and a **Hot Apply** button.
 - **Apps**: editable whitelist of installed apps excluded from spoofing (with search and a system-apps toggle; no reboot required). Pixel Camera is handled on its own and doesn't show up here.
 - **Settings**:
-  - **Spoof `ro.product.vendor.manufacturer`** (off by default; requires reboot).
-  - **Keep global `ro.product.manufacturer` stock** (off by default; requires reboot) — use this if a DenyList/Unmount banking or UPI app breaks with global manufacturer spoofing.
   - **Debug logging** (off by default; no reboot required) with **Capture Snapshot**, **Export to Download** (`/sdcard/Download/rkp_mfr_auto_log_<timestamp>.txt`), **Refresh**, **Copy**, and **Clear**.
   - **Color Theme** (`System`, `Light`, `Dark`, `AMOLED` — no reboot required) and GitHub links.
 
 ## Notes on Pixel Camera & strict banking / UPI apps
 
-- **Pixel Camera**: detected only on a real Pixel (brand / system manufacturer is `google`) or a Pixel based ROM. That means any of: the Google `com.google.android.feature.PIXEL_EXPERIENCE` flag is there, Pixel Camera comes preinstalled in the ROM, or the ROM's own props show it's PixelOS, Pixel Experience, Evolution X, Project Elixir, DerpFest, Infinity-X, PixelPlusUI, YAAP, AfterLife, Pixel Extended, Project Blaze, Voltage or Statix. Lineage based ROMs (crDroid etc.) without Pixel Camera built in are skipped. Check Home for "Pixel Camera detected, fix applied". If some other camera app crashes for you, just turn it on in the **Apps** whitelist. Keep `ro.product.vendor.manufacturer` off unless a detector flags it.
+- **Pixel Camera**: detected only on a real Pixel (brand / system manufacturer is `google`) or a Pixel based ROM. That means any of: the Google `com.google.android.feature.PIXEL_EXPERIENCE` flag is there, Pixel Camera comes preinstalled in the ROM, or the ROM's own props show it's PixelOS, Pixel Experience, Evolution X, Project Elixir, DerpFest, Infinity-X, PixelPlusUI, YAAP, AfterLife, Pixel Extended, Project Blaze, Voltage or Statix. Lineage based ROMs (crDroid etc.) without Pixel Camera built in are skipped. Check Home for "Pixel Camera detected, fix applied". If some other camera app crashes for you, just turn it on in the **Apps** whitelist.
 - **Strict banking / UPI apps**:
-  1. First, try toggling the app on in the **Apps** whitelist and force-stopping/reopening it. User-whitelisted apps use stealth Java restore + immediate `dlclose` so no Zygisk `.so` stays mapped in memory.
-  2. If the app still fails (usually because it is in KSU Unmount / Zygisk DenyList, which blocks Zygisk from injecting at all), turn on **Keep global `ro.product.manufacturer` stock** in WebUI **Settings** and reboot. That leaves `ro.product.manufacturer` untouched globally so DenyList apps see stock props with zero Zygisk maps, while non-whitelisted apps get stealth Java `Build.MANUFACTURER` spoofing.
-  3. If you still hit issues, turn on **Enable debug log** in Settings, reproduce the issue once, tap **Export to Download**, and share the `.txt` file from `/sdcard/Download/`.
+  1. Toggle the app on in the **Apps** whitelist and force-stop/reopen it. User-whitelisted apps use stealth Java restore + immediate `dlclose` so no Zygisk `.so` stays mapped in memory.
+  2. If you still hit issues, turn on **Enable debug log** in Settings, reproduce the issue once, tap **Export to Download**, and share the `.txt` file from `/sdcard/Download/`.
 
 ## Roadmap
 

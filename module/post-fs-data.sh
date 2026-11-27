@@ -75,9 +75,14 @@ DEBUG_LOG=0
 if [ -f "$CONF" ]; then
   . "$CONF"
 fi
-[ "$SPOOF_VENDOR_MFR" = "1" ] || SPOOF_VENDOR_MFR=0
-[ "$STOCK_GLOBAL_MFR" = "1" ] || STOCK_GLOBAL_MFR=0
 [ "$DEBUG_LOG" = "1" ] || DEBUG_LOG=0
+# Force vendor prop and stock global mode off (toggles hidden from WebUI; code kept in case needed later)
+if [ "$SPOOF_VENDOR_MFR" = "1" ] || [ "$STOCK_GLOBAL_MFR" = "1" ]; then
+  printf 'SPOOF_VENDOR_MFR=0\nSTOCK_GLOBAL_MFR=0\nDEBUG_LOG=%s\n' "$DEBUG_LOG" > "$CONF" 2>/dev/null
+  chmod 0644 "$CONF" 2>/dev/null
+fi
+SPOOF_VENDOR_MFR=0
+STOCK_GLOBAL_MFR=0
 
 dlog() {
   [ "$DEBUG_LOG" = "1" ] || return 0

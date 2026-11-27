@@ -719,6 +719,7 @@
 
     <!-- SETTINGS TAB -->
     <section id="tab-settings" class="tab-panel">
+      <!-- Hidden for now (forced off in post-fs-data.sh; kept in case needed later)
       <div class="card">
         <div class="card-title">Zygisk Props</div>
         <div class="setting-row">
@@ -746,6 +747,7 @@
           </label>
         </div>
       </div>
+      -->
 
       <div class="card">
         <div class="card-title">Debug Logging</div>
@@ -965,6 +967,7 @@
         html += `<div class="app-list" style="margin-top:8px;"><div class="app-item"><div><div class="app-name">Pixel Camera detected, fix applied</div><div class="app-pkg">${where}, stock manufacturer kept for the camera</div></div><span class="pill ok">Fixed</span></div></div>`;
       }
 
+      /* Vendor prop toggle hidden from Settings for now
       if (isRkp && rkpMfr && detectedApps.length > 0 && !spoofVendor) {
         html += `
           <div class="suggest-box">
@@ -973,6 +976,7 @@
           </div>
         `;
       }
+      */
 
       box.innerHTML = html;
       const goBtn = document.getElementById("goSettingsBtn");
@@ -1011,13 +1015,13 @@
         ? `<span class="pill ok">${escapeHtml(zygiskBackend)}</span>`
         : '<span class="pill warn">Missing</span>';
       document.getElementById("propMfr").textContent = curMfr;
-      document.getElementById("propVendorMfr").innerHTML = spoofVendor
-        ? escapeHtml(curVendor)
-        : `${escapeHtml(curVendor)} <span class="pill info">Off</span>`;
+      document.getElementById("propVendorMfr").textContent = curVendor;
       document.getElementById("propAttestMfr").textContent = curAttest;
       document.getElementById("bootLog").textContent = data.LAST_LOG || "No log yet.";
-      document.getElementById("vendorToggle").checked = spoofVendor;
-      document.getElementById("stockGlobalToggle").checked = stockGlobal;
+      // const vendorEl = document.getElementById("vendorToggle");
+      // if (vendorEl) vendorEl.checked = spoofVendor;
+      // const stockEl = document.getElementById("stockGlobalToggle");
+      // if (stockEl) stockEl.checked = stockGlobal;
       document.getElementById("debugLogToggle").checked = debugLog;
       loadDebugLog();
 
@@ -1162,8 +1166,11 @@
     });
 
     async function writeConfig(markReboot) {
-      const spoofVendor = document.getElementById("vendorToggle").checked ? "1" : "0";
-      const stockGlobal = document.getElementById("stockGlobalToggle").checked ? "1" : "0";
+      // Forced off while toggles are hidden from WebUI
+      const spoofVendor = "0";
+      const stockGlobal = "0";
+      // const spoofVendor = document.getElementById("vendorToggle")?.checked ? "1" : "0";
+      // const stockGlobal = document.getElementById("stockGlobalToggle")?.checked ? "1" : "0";
       const debugLog = document.getElementById("debugLogToggle").checked ? "1" : "0";
       let cmd = `printf 'SPOOF_VENDOR_MFR=%s\\nSTOCK_GLOBAL_MFR=%s\\nDEBUG_LOG=%s\\n' '${spoofVendor}' '${stockGlobal}' '${debugLog}' > "${CONF_PATH}" && chmod 0644 "${CONF_PATH}" 2>/dev/null`;
       if (markReboot) {
@@ -1188,6 +1195,7 @@
       }
     }
 
+    /* Hidden for now (forced off in post-fs-data.sh; kept in case needed later)
     // Vendor manufacturer toggle (requires reboot)
     document.getElementById("vendorToggle").addEventListener("change", async (e) => {
       const res = await writeConfig(true);
@@ -1213,6 +1221,7 @@
         showToast("Failed to save setting.");
       }
     });
+    */
 
     // Debug logging toggle (no reboot required)
     document.getElementById("debugLogToggle").addEventListener("change", async (e) => {
