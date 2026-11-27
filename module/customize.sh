@@ -114,6 +114,11 @@ if [ -d "$LIVE_DIR" ] && [ "$MODPATH" != "$LIVE_DIR" ]; then
   fi
 fi
 
+# A Zygisk setting was force-reset (or a reboot was already pending): install
+# the normal way so the module card asks for a reboot.
+ZYGISK_LIB_SAME="$CAN_HOT_INSTALL"
+[ "$NEED_REBOOT" = "1" ] && CAN_HOT_INSTALL=0
+
 if [ "$CAN_HOT_INSTALL" = "1" ]; then
   ui_print "- Zygisk libraries unchanged; hot-installing WebUI & scripts..."
   cp -f "$MODPATH/module.prop" "$LIVE_DIR/module.prop"
@@ -151,11 +156,7 @@ else
 fi
 
 if [ "$CAN_HOT_INSTALL" = "1" ]; then
-  if [ "$NEED_REBOOT" = "1" ]; then
-    touch "$REBOOT_FLAG" 2>/dev/null
-  else
-    rm -f "$REBOOT_FLAG"
-  fi
+  rm -f "$REBOOT_FLAG"
   # Clear KernelSU's pending update marker right after ksud finishes installing
   (
     sleep 1
@@ -164,13 +165,12 @@ if [ "$CAN_HOT_INSTALL" = "1" ]; then
     sleep 1
     rm -f "$LIVE_DIR/update"
   ) >/dev/null 2>&1 &
-  if [ "$NEED_REBOOT" = "1" ]; then
-    ui_print "- Hot-install complete (WebUI ready immediately)"
-    ui_print "- Reboot required, a setting that needs reboot was changed"
-  else
-    ui_print "- Hot-install complete (WebUI ready immediately, no reboot required)"
-  fi
+  ui_print "- Hot-install complete (WebUI ready immediately, no reboot required)"
 else
   touch "$REBOOT_FLAG" 2>/dev/null
-  ui_print "- Reboot required to load updated Zygisk library"
+  if [ "$NEED_REBOOT" = "1" ] && [ "$ZYGISK_LIB_SAME" = "1" ]; then
+    ui_print "- Reboot required, a Zygisk setting was changed"
+  else
+    ui_print "- Reboot required to load updated Zygisk library"
+  fi
 fi

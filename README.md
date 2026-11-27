@@ -29,7 +29,7 @@ If your keybox is not RKP (no `map[3]`) or your phone already matches, it won't 
 Flash the zip from Releases in KSU / APatch / Magisk. Remove or disable any old hardcoded module like `rkp_nubia` first.
 
 - If you are updating from a previous version and the Zygisk native libraries did not change (WebUI / script-only updates), `customize.sh` hot-installs directly into `/data/adb/modules/rkp_mfr_auto` and clears KernelSU's pending `update` marker so the WebUI stays accessible right away without a reboot.
-- On a first install or whenever the Zygisk `.so` changes, a reboot is required to load the new native library.
+- On a first install, whenever the Zygisk `.so` changes, or when the update has to reset a Zygisk setting, it installs the normal way and the module card asks for a reboot.
 - You can also tap **Hot Apply** in the WebUI after swapping keyboxes.
 
 Removing the module also wipes its saved settings, whitelist and logs in `/data/adb/rkp_mfr_auto.*`. The props go back to stock after the reboot.
