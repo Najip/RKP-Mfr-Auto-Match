@@ -1,12 +1,13 @@
-#include "zygisk.hpp"
-
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/sysmacros.h>
 #include <sys/system_properties.h>
+#include <sys/types.h>
 #include <unistd.h>
+
+#include "zygisk.hpp"
 
 namespace {
 
