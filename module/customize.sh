@@ -81,15 +81,22 @@ REBOOT_FLAG="/data/adb/rkp_mfr_auto.reboot"
 # The two prop toggles are gone from the WebUI. Reset them right at install
 # so an old "on" value can't stick around, debug log choice is kept.
 OLD_CONF="/data/adb/rkp_mfr_auto.conf"
+# Props changed by an old toggle only go back on reboot. Also keep a reboot
+# that was already pending before this update.
+NEED_REBOOT=0
+[ -f "$REBOOT_FLAG" ] && NEED_REBOOT=1
 if [ -f "$OLD_CONF" ]; then
   OLD_DBG=0
   grep -q '^DEBUG_LOG=1' "$OLD_CONF" 2>/dev/null && OLD_DBG=1
   if grep -qE '^(SPOOF_VENDOR_MFR|STOCK_GLOBAL_MFR)=1' "$OLD_CONF" 2>/dev/null; then
     ui_print "- Old prop toggle was on, turned it off"
+    NEED_REBOOT=1
   fi
   printf 'SPOOF_VENDOR_MFR=0\nSTOCK_GLOBAL_MFR=0\nDEBUG_LOG=%s\n' "$OLD_DBG" > "$OLD_CONF"
   chmod 0644 "$OLD_CONF" 2>/dev/null
 fi
+# set it now so the module description shows the pending reboot too
+[ "$NEED_REBOOT" = "1" ] && touch "$REBOOT_FLAG" 2>/dev/null
 
 # Check if this is an update where native Zygisk .so libraries did NOT change.
 # If unchanged, hot-install scripts + webroot directly into LIVE_DIR and clear
@@ -144,7 +151,11 @@ else
 fi
 
 if [ "$CAN_HOT_INSTALL" = "1" ]; then
-  rm -f "$REBOOT_FLAG"
+  if [ "$NEED_REBOOT" = "1" ]; then
+    touch "$REBOOT_FLAG" 2>/dev/null
+  else
+    rm -f "$REBOOT_FLAG"
+  fi
   # Clear KernelSU's pending update marker right after ksud finishes installing
   (
     sleep 1
@@ -153,7 +164,12 @@ if [ "$CAN_HOT_INSTALL" = "1" ]; then
     sleep 1
     rm -f "$LIVE_DIR/update"
   ) >/dev/null 2>&1 &
-  ui_print "- Hot-install complete (WebUI ready immediately, no reboot required)"
+  if [ "$NEED_REBOOT" = "1" ]; then
+    ui_print "- Hot-install complete (WebUI ready immediately)"
+    ui_print "- Reboot required, a setting that needs reboot was changed"
+  else
+    ui_print "- Hot-install complete (WebUI ready immediately, no reboot required)"
+  fi
 else
   touch "$REBOOT_FLAG" 2>/dev/null
   ui_print "- Reboot required to load updated Zygisk library"
