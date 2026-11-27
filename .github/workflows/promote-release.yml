@@ -1,17 +1,29 @@
-name: Promote to Release
+name: Promote Build
 
 on:
   workflow_dispatch:
     inputs:
-      source:
-        description: "Reuse build from"
+      target:
+        description: "Promote to"
         type: choice
         default: "pre"
         options:
           - pre
+          - release
+      source:
+        description: "Reuse artifact from"
+        type: choice
+        default: "ci"
+        options:
           - ci
-      release_tag:
-        description: "Release tag (e.g. v0.3.0; leave blank to auto-derive)"
+          - pre
+      run_id:
+        description: "CI run ID (for source=ci; leave blank for latest successful Build & Deploy run)"
+        type: string
+        required: false
+        default: ""
+      tag:
+        description: "Target tag (e.g. v0.4.0-pre.6 or v0.4.0; leave blank to auto-generate)"
         type: string
         required: false
         default: ""
@@ -20,7 +32,7 @@ on:
         type: string
         default: ""
       dry_run:
-        description: "Test download and repack without publishing a release"
+        description: "Test download and repack without publishing"
         type: boolean
         default: false
 
@@ -38,7 +50,7 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Download ZIP from latest pre-release or CI run
+      - name: Fetch existing artifact from CI run or Pre-release
         id: fetch
         env:
           GH_TOKEN: ${{ github.token }}
@@ -55,30 +67,61 @@ jobs:
             fi
             echo "Promoting from pre-release: ${PRE_TAG}"
             gh release download "$PRE_TAG" --pattern "*.zip" --dir /tmp/src_zip
+            SRC_FILE=$(ls /tmp/src_zip/*.zip | head -n 1)
+            if [[ -z "$SRC_FILE" ]]; then
+              echo "No ZIP found in pre-release ${PRE_TAG}." >&2
+              exit 1
+            fi
+            unzip -q "$SRC_FILE" -d /tmp/repack
+            TARGET_SHA=$(git rev-list -n 1 "$PRE_TAG" 2>/dev/null || git rev-parse HEAD)
             echo "source_ref=${PRE_TAG}" >> "$GITHUB_OUTPUT"
+            echo "target_sha=${TARGET_SHA}" >> "$GITHUB_OUTPUT"
           else
-            RUN_ID=$(gh run list --workflow "build.yml" --status success --limit 20 \
-              --json databaseId --jq '.[0].databaseId')
+            RUN_ID="${{ inputs.run_id }}"
+            if [[ -z "$RUN_ID" ]]; then
+              RUN_ID=$(gh run list --workflow "build.yml" --status success --limit 20 \
+                --json databaseId --jq '.[0].databaseId')
+            fi
             if [[ -z "$RUN_ID" || "$RUN_ID" == "null" ]]; then
               echo "No successful CI run found." >&2
               exit 1
             fi
-            echo "Promoting from CI run: ${RUN_ID}"
-            gh run download "$RUN_ID" --name rkp-mfr-auto-zip --dir /tmp/src_zip
+            TARGET_SHA=$(gh run view "$RUN_ID" --json headSha --jq '.headSha')
+            ART_NAME=$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/artifacts" \
+              --jq '.artifacts[0].name')
+            if [[ -z "$ART_NAME" || "$ART_NAME" == "null" ]]; then
+              echo "No artifact found in CI run ${RUN_ID}." >&2
+              exit 1
+            fi
+            echo "Promoting from CI run ${RUN_ID} (artifact: ${ART_NAME}, sha: ${TARGET_SHA})"
+            gh run download "$RUN_ID" --name "$ART_NAME" --dir /tmp/repack
+
+            # Backward compatibility if an older CI run uploaded a zip-inside-zip
+            if [[ ! -f /tmp/repack/module.prop ]]; then
+              LEGACY_ZIP=$(ls /tmp/repack/*.zip 2>/dev/null | head -n 1 || true)
+              if [[ -n "$LEGACY_ZIP" ]]; then
+                mv "$LEGACY_ZIP" /tmp/src_zip/legacy.zip
+                rm -rf /tmp/repack/*
+                unzip -q /tmp/src_zip/legacy.zip -d /tmp/repack
+              fi
+            fi
+
             echo "source_ref=CI run ${RUN_ID}" >> "$GITHUB_OUTPUT"
+            echo "target_sha=${TARGET_SHA}" >> "$GITHUB_OUTPUT"
           fi
 
-          SRC_FILE=$(ls /tmp/src_zip/*.zip | head -n 1)
-          if [[ -z "$SRC_FILE" ]]; then
-            echo "No ZIP found in downloaded source." >&2
+          if [[ ! -f /tmp/repack/module.prop ]]; then
+            echo "module.prop not found in fetched artifact." >&2
+            ls -la /tmp/repack >&2
             exit 1
           fi
-          echo "src_file=${SRC_FILE}" >> "$GITHUB_OUTPUT"
 
-      - name: Determine release tag and repack ZIP
+      - name: Determine target tag and repack ZIP
         id: pack
         run: |
-          TAG="${{ inputs.release_tag }}"
+          TARGET="${{ inputs.target }}"
+          TAG="${{ inputs.tag }}"
+
           if [[ -z "$TAG" ]]; then
             SRC_REF="${{ steps.fetch.outputs.source_ref }}"
             if [[ "$SRC_REF" == v* ]]; then
@@ -88,11 +131,24 @@ jobs:
               BASE_VER="${PROP_VER%%-*}"
               [[ "$BASE_VER" == v* ]] || BASE_VER="v${BASE_VER:-0.1.0}"
             fi
+
             while git rev-parse -q --verify "refs/tags/${BASE_VER}" >/dev/null 2>&1; do
               IFS='.' read -r MAJ MIN PAT <<< "${BASE_VER#v}"
               BASE_VER="v${MAJ}.${MIN}.$(( ${PAT:-0} + 1 ))"
             done
-            TAG="${BASE_VER}"
+
+            if [[ "$TARGET" == "pre" ]]; then
+              max_n=0
+              for t in $(git tag -l "${BASE_VER}-pre.*"); do
+                n="${t##*-pre.}"
+                if [[ "$n" =~ ^[0-9]+$ ]] && (( n > max_n )); then
+                  max_n="$n"
+                fi
+              done
+              TAG="${BASE_VER}-pre.$((max_n + 1))"
+            else
+              TAG="${BASE_VER}"
+            fi
           fi
 
           VER_CODE="$(bash .github/scripts/version_code.sh)"
@@ -103,31 +159,61 @@ jobs:
           fi
           ZIP_NAME="rkp-mfr-auto-${TAG}.zip"
 
-          unzip -q "${{ steps.fetch.outputs.src_file }}" -d /tmp/repack
           sed -i "s/^version=.*/version=${TAG}/" /tmp/repack/module.prop
           sed -i "s/^versionCode=.*/versionCode=${VER_CODE}/" /tmp/repack/module.prop
+          chmod 755 /tmp/repack/post-fs-data.sh /tmp/repack/service.sh /tmp/repack/META-INF/com/google/android/update-binary 2>/dev/null || true
+          [ -f /tmp/repack/uninstall.sh ] && chmod 755 /tmp/repack/uninstall.sh
           (cd /tmp/repack && zip -r9 "${GITHUB_WORKSPACE}/${ZIP_NAME}" .)
 
           echo "Repacked ${ZIP_NAME}:"
           cat /tmp/repack/module.prop
+          unzip -l "${GITHUB_WORKSPACE}/${ZIP_NAME}"
 
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "zip_name=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
           echo "version_code=${VER_CODE}" >> "$GITHUB_OUTPUT"
 
-      - name: Create Full Release
-        if: ${{ !inputs.dry_run }}
+      - name: Publish Pre-Release
+        if: ${{ !inputs.dry_run && inputs.target == 'pre' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${{ steps.pack.outputs.tag }}"
           ZIP="${{ steps.pack.outputs.zip_name }}"
+          TARGET_SHA="${{ steps.fetch.outputs.target_sha }}"
           NOTES="${{ inputs.changelog_notes }}"
 
           if [[ -n "$NOTES" ]]; then
             printf '%s\n' "$NOTES" > /tmp/release_notes.md
           else
-            bash .github/scripts/gen_changelog.sh release "$TAG" HEAD > /tmp/release_notes.md
+            bash .github/scripts/gen_changelog.sh pre "$TAG" "$TARGET_SHA" > /tmp/release_notes.md
+          fi
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ZIP" --clobber
+            gh release edit "$TAG" --prerelease --notes-file /tmp/release_notes.md
+          else
+            gh release create "$TAG" "$ZIP" \
+              --prerelease \
+              --target "$TARGET_SHA" \
+              --title "RKP Manufacturer Auto-Match ${TAG}" \
+              --notes-file /tmp/release_notes.md
+          fi
+
+      - name: Publish Full Release
+        if: ${{ !inputs.dry_run && inputs.target == 'release' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.pack.outputs.tag }}"
+          ZIP="${{ steps.pack.outputs.zip_name }}"
+          TARGET_SHA="${{ steps.fetch.outputs.target_sha }}"
+          NOTES="${{ inputs.changelog_notes }}"
+
+          if [[ -n "$NOTES" ]]; then
+            printf '%s\n' "$NOTES" > /tmp/release_notes.md
+          else
+            bash .github/scripts/gen_changelog.sh release "$TAG" "$TARGET_SHA" > /tmp/release_notes.md
           fi
 
           if gh release view "$TAG" >/dev/null 2>&1; then
@@ -135,13 +221,13 @@ jobs:
             gh release edit "$TAG" --prerelease=false --notes-file /tmp/release_notes.md
           else
             gh release create "$TAG" "$ZIP" \
-              --target main \
+              --target "$TARGET_SHA" \
               --title "RKP Manufacturer Auto-Match ${TAG}" \
               --notes-file /tmp/release_notes.md
           fi
 
-      - name: Update update.json and changelog.md
-        if: ${{ !inputs.dry_run }}
+      - name: Update update.json and changelog.md (Release only)
+        if: ${{ !inputs.dry_run && inputs.target == 'release' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

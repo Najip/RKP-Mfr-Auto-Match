@@ -12,7 +12,7 @@ on:
       mode:
         description: "Build mode"
         type: choice
-        default: "pre"
+        default: "ci"
         options:
           - ci
           - pre
@@ -79,12 +79,12 @@ jobs:
               elif [[ "$MODE" == "pre" ]]; then
                 TAG="$(next_pre_tag)"
               else
-                TAG="${BASE_VER}-ci.${GITHUB_RUN_NUMBER}.${SHORT_SHA}"
+                TAG="${BASE_VER}-canary-${SHORT_SHA}"
               fi
             fi
           elif [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
             MODE="ci"
-            TAG="${BASE_VER}-pr.${GITHUB_RUN_NUMBER}.${SHORT_SHA}"
+            TAG="${BASE_VER}-canary-${SHORT_SHA}"
           elif [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
             TAG="${GITHUB_REF_NAME}"
             if [[ "$TAG" == *-* ]]; then
@@ -98,10 +98,16 @@ jobs:
             TAG="$(next_pre_tag)"
           fi
 
-          ZIP_NAME="rkp-mfr-auto-${TAG}.zip"
+          ARTIFACT_NAME="rkp-mfr-auto-canary-${BASE_VER}-${SHORT_SHA}"
+          if [[ "$MODE" == "ci" ]]; then
+            ZIP_NAME="${ARTIFACT_NAME}.zip"
+          else
+            ZIP_NAME="rkp-mfr-auto-${TAG}.zip"
+          fi
           echo "mode=${MODE}" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "zip_name=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=${ARTIFACT_NAME}" >> "$GITHUB_OUTPUT"
           echo "version_code=${VER_CODE}" >> "$GITHUB_OUTPUT"
 
       - name: Build Zygisk native libraries
@@ -137,7 +143,7 @@ jobs:
       - name: Upload flashable ZIP artifact
         uses: actions/upload-artifact@v4
         with:
-          name: rkp-mfr-auto-${{ steps.meta.outputs.tag }}
+          name: ${{ steps.meta.outputs.artifact_name }}
           path: module/
           include-hidden-files: true
 

@@ -1151,6 +1151,13 @@ if [ "$1" = "--status" ]; then
   echo "SPOOF_VENDOR_MFR=$SPOOF_VENDOR_MFR"
   echo "STOCK_GLOBAL_MFR=$STOCK_GLOBAL_MFR"
   echo "DEBUG_LOG=$DEBUG_LOG"
+  BOOT_DBG_FILE="/dev/.rkp_mfr_auto_boot_dbg"
+  if [ ! -f "$BOOT_DBG_FILE" ]; then
+    printf '%s\n' "$DEBUG_LOG" > "$BOOT_DBG_FILE" 2>/dev/null
+  fi
+  BOOT_DEBUG_LOG=$(head -n 1 "$BOOT_DBG_FILE" 2>/dev/null)
+  [ "$BOOT_DEBUG_LOG" = "1" ] || BOOT_DEBUG_LOG=0
+  echo "BOOT_DEBUG_LOG=$BOOT_DEBUG_LOG"
   echo "ZYGISK_BACKEND=$ZYGISK_BACKEND"
   echo "PENDING_REBOOT=$PENDING_REBOOT"
   echo "KEYSTORE_MODULE=${KB_OWNER:-${KS_PRIMARY:-}}"
@@ -1179,9 +1186,10 @@ if [ "$1" = "--dry-run" ]; then
   exit 0
 fi
 
-# Clear pending-reboot flag on normal boot
+# Clear pending-reboot flag and record boot-time debug log state on normal boot
 if [ "$1" != "--hot-apply" ]; then
   rm -f "$REBOOT_FLAG"
+  printf '%s\n' "$DEBUG_LOG" > /dev/.rkp_mfr_auto_boot_dbg 2>/dev/null
 fi
 
 if [ -z "$ZYGISK_BACKEND" ]; then

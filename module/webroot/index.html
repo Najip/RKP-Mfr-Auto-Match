@@ -192,6 +192,14 @@
       opacity: 0.75;
     }
 
+    .btn-chip:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      background: var(--surface-alt);
+      border-color: var(--border);
+      color: var(--muted);
+    }
+
     .tab-panel {
       display: none;
     }
@@ -759,11 +767,12 @@
             <button type="button" class="btn-chip primary" id="captureLogBtn" data-i18n="btn.capture">Capture Snapshot</button>
             <button type="button" class="btn-chip primary" id="exportLogBtn" data-i18n="btn.export">Export Log</button>
             <button type="button" class="btn-chip" id="exportPublicBtn" data-i18n="btn.exportPublic">Save to Download</button>
-            <button type="button" class="btn-chip primary" id="reportIssueBtn" data-i18n="btn.reportIssue">Report Issue</button>
+            <button type="button" class="btn-chip primary" id="reportIssueBtn" data-i18n="btn.reportIssue" disabled>Report Issue</button>
             <button type="button" class="btn-chip" id="refreshLogBtn" data-i18n="btn.refreshLog">Refresh</button>
             <button type="button" class="btn-chip" id="copyLogBtn" data-i18n="btn.copy">Copy</button>
             <button type="button" class="btn-chip" id="clearLogBtn" data-i18n="btn.clear">Clear</button>
           </div>
+          <div id="reportDisabledHint" class="setting-desc" style="margin:0 0 10px;" data-i18n="report.disabledHint">Turn on Debug log and reboot to enable Report Issue.</div>
           <div id="exportConfirm" class="suggest-box caution" style="display:none;margin:0 0 10px;">
             <div data-i18n="export.warn">The export contains device props, installed module names, package names and the debug log. Files in Download can be read by other apps with storage access.</div>
             <div style="display:flex;gap:8px;">
@@ -899,6 +908,7 @@
       "btn.cancel": "Cancel",
       "export.warn": "The export contains device props, installed module names, package names and the debug log. Files in Download can be read by other apps with storage access.",
       "report.warn": "Opens the GitHub bug report form in your browser with module version, device, root manager, Zygisk backend, keystore setup and a short diagnostic log pre-filled. Nothing is submitted until you post it on GitHub.",
+      "report.disabledHint": "Turn on Debug log and reboot to enable Report Issue.",
       "btn.repo": "GitHub Repository",
       "btn.profile": "GitHub Profile (@Najip)",
       "reboot.title": "Waiting for reboot",
@@ -1031,6 +1041,7 @@
       "btn.cancel": "取消",
       "export.warn": "导出内容包含设备属性、已安装模块、包名和调试日志。下载目录中的文件可能被具有存储权限的其他应用读取。",
       "report.warn": "将在浏览器中打开 GitHub 问题反馈表单，并自动预填模块版本、设备、Root 管理器、Zygisk 后端、密钥库配置和简短诊断日志。在你在 GitHub 上点击提交之前不会发送任何内容。",
+      "report.disabledHint": "开启调试日志并重启后即可使用反馈问题。",
       "btn.repo": "GitHub 仓库",
       "btn.profile": "GitHub 主页（@Najip）",
       "reboot.title": "等待重启",
@@ -1418,6 +1429,22 @@
     box.style.display = "flex";
   }
 
+  var bootDebugLog = false;
+  var installerPendingReboot = false;
+
+  function syncDebugUiState() {
+    var dbgOn = !!document.getElementById("debugLogToggle").checked;
+    var reportBtn = document.getElementById("reportIssueBtn");
+    var hintEl = document.getElementById("reportDisabledHint");
+    var reportBox = document.getElementById("reportConfirm");
+    if (reportBtn) reportBtn.disabled = !dbgOn;
+    if (hintEl) hintEl.style.display = dbgOn ? "none" : "block";
+    if (!dbgOn && reportBox) reportBox.style.display = "none";
+    var needReboot = installerPendingReboot || (dbgOn && !bootDebugLog);
+    document.getElementById("rebootBanner").classList.toggle("show", needReboot);
+    return needReboot;
+  }
+
   function loadStatus() {
     return ksuExec(runScriptCmd("--status")).then(function (res) {
       if (res.errno !== 0 && !res.stdout) {
@@ -1433,14 +1460,14 @@
       var curVendor = data.CUR_VENDOR_MFR || t("common.empty");
       var curAttest = data.CUR_ATTEST_MFR || t("common.empty");
       var debugLog = data.DEBUG_LOG === "1";
+      bootDebugLog = data.BOOT_DEBUG_LOG === "1";
       var zygiskBackend = data.ZYGISK_BACKEND || "";
-      var pendingReboot = data.PENDING_REBOOT === "1";
+      installerPendingReboot = data.PENDING_REBOOT === "1";
       var detectedApps = parseAppList(data.DETECTED_APPS || "");
       var pixelCam = data.PIXEL_CAM === "1";
       var pixelCamReason = data.PIXEL_CAM_REASON || "";
       var ksModule = data.KEYSTORE_MODULE || "";
 
-      document.getElementById("rebootBanner").classList.toggle("show", pendingReboot);
       document.getElementById("kbPath").textContent = kbPath || t("common.notFound");
       document.getElementById("kbMfr").textContent = rkpMfr || t("common.none");
       document.getElementById("ksModuleVal").textContent = ksModule || t("common.none");
@@ -1452,6 +1479,7 @@
       document.getElementById("propAttestMfr").textContent = curAttest;
       document.getElementById("bootLog").textContent = data.LAST_LOG || "-";
       document.getElementById("debugLogToggle").checked = debugLog;
+      syncDebugUiState();
       loadDebugLog();
       renderWarnings(data.WARNINGS || "", data.RKP_MFRS || "");
       renderApps(detectedApps, pixelCam, pixelCamReason);
@@ -1686,13 +1714,16 @@
     var el = e.target;
     writeConfig(false).then(function (res) {
       if (res.errno === 0) {
-        showToast(t("toast.savedNoReboot"));
+        var askReboot = el.checked && !bootDebugLog;
+        syncDebugUiState();
+        showToast(t(askReboot ? "toast.savedReboot" : "toast.savedNoReboot"));
         if (el.checked) {
           ksuExec(runScriptCmd("--status") + " >/dev/null 2>&1; " + runScriptCmd("--list-apps") + " >/dev/null 2>&1");
         }
         loadDebugLog();
       } else {
         el.checked = !el.checked;
+        syncDebugUiState();
         showToast(t("toast.saveFailed"));
       }
     });
@@ -1702,7 +1733,7 @@
     var chain = Promise.resolve();
     if (!document.getElementById("debugLogToggle").checked) {
       document.getElementById("debugLogToggle").checked = true;
-      chain = writeConfig(false);
+      chain = writeConfig(false).then(function () { syncDebugUiState(); });
     }
     return chain.then(function () {
       return ksuExec(runScriptCmd("--status") + " >/dev/null 2>&1; " + runScriptCmd("--list-apps") + " >/dev/null 2>&1");
