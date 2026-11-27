@@ -96,6 +96,27 @@ jobs:
           echo "zip_name=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
           echo "version_code=${VER_CODE}" >> "$GITHUB_OUTPUT"
 
+      - name: Build Zygisk native libraries
+        run: |
+          NDK_BIN=""
+          if [[ -n "${ANDROID_NDK_HOME:-}" && -x "${ANDROID_NDK_HOME}/ndk-build" ]]; then
+            NDK_BIN="${ANDROID_NDK_HOME}/ndk-build"
+          elif [[ -n "${ANDROID_NDK_LATEST_HOME:-}" && -x "${ANDROID_NDK_LATEST_HOME}/ndk-build" ]]; then
+            NDK_BIN="${ANDROID_NDK_LATEST_HOME}/ndk-build"
+          else
+            NDK_BIN="$(find /usr/local/lib/android/sdk/ndk -maxdepth 2 -name ndk-build -type f 2>/dev/null | sort -V | tail -n1)"
+          fi
+          if [[ -z "$NDK_BIN" ]]; then
+            echo "Android NDK ndk-build not found" >&2
+            exit 1
+          fi
+          echo "Using NDK: $NDK_BIN"
+          "$NDK_BIN" -C zygisk NDK_PROJECT_PATH=. APP_BUILD_SCRIPT=jni/Android.mk NDK_APPLICATION_MK=jni/Application.mk -j"$(nproc)"
+          mkdir -p module/zygisk
+          cp zygisk/libs/arm64-v8a/librkp_mfr_auto.so module/zygisk/arm64-v8a.so
+          cp zygisk/libs/armeabi-v7a/librkp_mfr_auto.so module/zygisk/armeabi-v7a.so
+          ls -lh module/zygisk/
+
       - name: Stamp module.prop and build flashable ZIP
         run: |
           sed -i "s/^version=.*/version=${{ steps.meta.outputs.tag }}/" module/module.prop

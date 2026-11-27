@@ -1,0 +1,4 @@
+zygisk/libs/
+zygisk/obj/
+module/zygisk/
+*.zip

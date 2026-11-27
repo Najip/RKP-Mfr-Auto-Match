@@ -14,10 +14,9 @@ On boot (`post-fs-data`), it checks:
 - `/data/adb/tricky_store/keybox.xml` (TrickyStore / TEESimulator-RS / older TEESimulator)
 - `/data/adb/omk/keybox.xml` and `/data/adb/TEESimulator/keybox.xml` (fallback)
 
-It grabs the RKP manufacturer from the cert extension (`1.3.6.1.4.1.11129.2.1.30`, `map[3]`) using BusyBox `awk`/`base64`/`od`, then sets:
-- `ro.product.manufacturer`
-- `ro.product.manufacturer_for_attestation`
-- `ro.product.vendor.manufacturer` (off by default, can be toggled on in WebUI Settings)
+It grabs the RKP manufacturer from the cert extension (`1.3.6.1.4.1.11129.2.1.30`, `map[3]`) using BusyBox `awk`/`base64`/`od`, then applies it in one of two modes (selectable in WebUI Settings):
+- **Zygisk (per-app)** (default when Zygisk is detected): leaves global `ro.product.manufacturer` stock and spoofs `Build.MANUFACTURER` + native property reads per-app while automatically excluding camera apps (`com.google.android.GoogleCamera*`, `com.google.android.apps.camera.services`, OEM cameras). You can add extra packages to exclude (one per line) in `/data/adb/rkp_mfr_auto.exclude`.
+- **resetprop (global)** (default when no Zygisk is installed): sets `ro.product.manufacturer`, `ro.product.manufacturer_for_attestation`, and optionally `ro.product.vendor.manufacturer` (off by default in WebUI Settings).
 
 If your keybox is not RKP (no `map[3]`) or your phone already matches, it won't touch anything.
 

@@ -556,6 +556,10 @@
           <span class="kv-val" id="kbMfr">-</span>
         </div>
         <div class="kv-row">
+          <span class="kv-key">Spoof mode</span>
+          <span class="kv-val" id="spoofModeVal">-</span>
+        </div>
+        <div class="kv-row">
           <span class="kv-key">Path</span>
           <span class="kv-val" id="kbPath">-</span>
         </div>
@@ -590,6 +594,21 @@
 
     <!-- SETTINGS TAB -->
     <section id="tab-settings" class="tab-panel">
+      <div class="card">
+        <div class="card-title">Spoof Mode</div>
+        <div class="setting-desc" id="modeDesc">
+          Zygisk spoofs per-app and excludes camera apps (Pixel Camera, GCam, OEM cameras) so they don't crash. resetprop changes props globally with no Zygisk needed.
+        </div>
+        <div class="theme-grid" id="modeGrid">
+          <button type="button" class="theme-opt" data-mode-choice="zygisk">
+            Zygisk (per-app)
+          </button>
+          <button type="button" class="theme-opt" data-mode-choice="resetprop">
+            resetprop (global)
+          </button>
+        </div>
+      </div>
+
       <div class="card">
         <div class="card-title">Boot Props</div>
         <div class="setting-row">
@@ -658,6 +677,8 @@
     const THEME_KEY = "rkp_mfr_auto_theme";
     let cbCounter = 0;
     let toastTimer = null;
+    let currentMode = "resetprop";
+    let currentVendor = false;
 
     function runScriptCmd(arg) {
       return `if [ -x /data/adb/ksu/bin/busybox ]; then /data/adb/ksu/bin/busybox sh "${SCRIPT_PATH}" ${arg}; else sh "${SCRIPT_PATH}" ${arg}; fi`;
@@ -813,11 +834,19 @@
       const curVendor = data.CUR_VENDOR_MFR || "(empty)";
       const curAttest = data.CUR_ATTEST_MFR || "(empty)";
       const spoofVendor = data.SPOOF_VENDOR_MFR === "1";
+      const spoofMode = data.SPOOF_MODE === "zygisk" ? "zygisk" : "resetprop";
+      const zygiskDetected = data.ZYGISK_DETECTED === "1";
       const detectedApps = parseAppList(data.DETECTED_APPS || "");
       const cameraApps = parseAppList(data.CAMERA_APPS || "");
 
+      currentMode = spoofMode;
+      currentVendor = spoofVendor;
+
       document.getElementById("kbPath").textContent = kbPath || "Not found";
       document.getElementById("kbMfr").textContent = rkpMfr || "(none)";
+      document.getElementById("spoofModeVal").innerHTML = spoofMode === "zygisk"
+        ? '<span class="pill ok">Zygisk (per-app)</span>'
+        : '<span class="pill info">resetprop (global)</span>';
       document.getElementById("propMfr").textContent = curMfr;
       document.getElementById("propVendorMfr").innerHTML = spoofVendor
         ? escapeHtml(curVendor)
@@ -825,6 +854,12 @@
       document.getElementById("propAttestMfr").textContent = curAttest;
       document.getElementById("bootLog").textContent = data.LAST_LOG || "No log yet.";
       document.getElementById("vendorToggle").checked = spoofVendor;
+      document.querySelectorAll("#modeGrid .theme-opt").forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.modeChoice === spoofMode);
+      });
+      document.getElementById("modeDesc").textContent = zygiskDetected
+        ? "Zygisk detected. Per-app mode skips camera apps (Pixel Camera, GCam, OEM cameras) so they don't crash. resetprop changes props globally."
+        : "Zygisk not detected. Using resetprop (global). Install ReZygisk, Zygisk Next, BreZygisk, or Magisk Zygisk to use per-app mode.";
 
       renderApps(detectedApps, cameraApps, isRkp, rkpMfr, spoofVendor);
 
@@ -848,14 +883,23 @@
         );
       } else {
         kbTypeEl.innerHTML = '<span class="pill ok">RKP</span>';
-        const mfrMatched = curMfr === rkpMfr && curAttest === rkpMfr;
-        const vendorMatched = !spoofVendor || curVendor === rkpMfr;
-        if (mfrMatched && vendorMatched) {
-          setBanner("ok", `Matched (${rkpMfr})`, "Device manufacturer props match your active RKP keybox.");
+        if (spoofMode === "zygisk") {
+          setBanner("ok", `Zygisk mode (${rkpMfr})`, "Per-app spoofing active. Global ro.product.manufacturer stays stock and camera apps are excluded.");
         } else {
-          setBanner("warn", "Not applied yet", `RKP keybox manufacturer is "${rkpMfr}". Tap Hot Apply for native props or reboot to apply everywhere.`);
+          const mfrMatched = curMfr === rkpMfr && curAttest === rkpMfr;
+          const vendorMatched = !spoofVendor || curVendor === rkpMfr;
+          if (mfrMatched && vendorMatched) {
+            setBanner("ok", `Matched (${rkpMfr})`, "Device manufacturer props match your active RKP keybox.");
+          } else {
+            setBanner("warn", "Not applied yet", `RKP keybox manufacturer is "${rkpMfr}". Tap Hot Apply for native props or reboot to apply everywhere.`);
+          }
         }
       }
+    }
+
+    async function saveConfig(mode, vendorOn) {
+      const v = vendorOn ? "1" : "0";
+      return ksuExec(`printf 'SPOOF_MODE=%s\\nSPOOF_VENDOR_MFR=%s\\n' '${mode}' '${v}' > "${CONF_PATH}"`);
     }
 
     // Tab switching
@@ -863,11 +907,28 @@
       btn.addEventListener("click", () => switchTab(btn.dataset.tab));
     });
 
+    // Spoof mode selector
+    document.getElementById("modeGrid").addEventListener("click", async (e) => {
+      const btn = e.target.closest(".theme-opt");
+      if (!btn) return;
+      const chosen = btn.dataset.modeChoice;
+      if (chosen === currentMode) return;
+      const res = await saveConfig(chosen, currentVendor);
+      if (res.errno === 0) {
+        currentMode = chosen;
+        showToast("Saved. Reboot to take effect.");
+        loadStatus();
+      } else {
+        showToast("Failed to save setting.");
+      }
+    });
+
     // Vendor manufacturer toggle
     document.getElementById("vendorToggle").addEventListener("change", async (e) => {
-      const enabled = e.target.checked ? "1" : "0";
-      const res = await ksuExec(`printf 'SPOOF_VENDOR_MFR=%s\\n' '${enabled}' > "${CONF_PATH}"`);
+      const enabled = e.target.checked;
+      const res = await saveConfig(currentMode, enabled);
       if (res.errno === 0) {
+        currentVendor = enabled;
         showToast("Saved. Reboot to take effect.");
         loadStatus();
       } else {
