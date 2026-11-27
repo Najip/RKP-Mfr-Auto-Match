@@ -22,7 +22,10 @@ detect_zygisk_backend() {
     label="${pair#*|}"
     d="/data/adb/modules/$id"
     if [ -d "$d" ] && [ ! -f "$d/disable" ] && [ ! -f "$d/remove" ]; then
-      echo "$label"
+      # Forks like BreZygisk keep the "rezygisk" folder id; read module.prop name first
+      mname=""
+      [ -f "$d/module.prop" ] && mname=$(grep -iE '^name=' "$d/module.prop" 2>/dev/null | head -n 1 | cut -d= -f2- | tr -d '\r' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+      echo "${mname:-$label}"
       return
     fi
   done
