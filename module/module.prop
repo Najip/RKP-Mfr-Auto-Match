@@ -1,0 +1,6 @@
+id=rkp_mfr_auto
+name=RKP Manufacturer Auto-Match
+version=v0.1.0-pre.1
+versionCode=1
+author=Najip
+description=Auto-detect RKP keybox manufacturer (map[3]) and match props at boot

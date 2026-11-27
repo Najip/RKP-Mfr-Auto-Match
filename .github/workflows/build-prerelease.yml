@@ -1,0 +1,84 @@
+name: Build & Pre-Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      create_prerelease:
+        description: "Publish a GitHub Pre-Release with the flashable ZIP"
+        type: boolean
+        default: true
+      tag:
+        description: "Pre-release tag (e.g. v0.1.0-pre.2; leave blank to auto-generate)"
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Determine version and release mode
+        id: meta
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            TAG="${GITHUB_REF_NAME}"
+            DO_RELEASE="true"
+          elif [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${{ inputs.create_prerelease }}" == "true" ]]; then
+            TAG="${{ inputs.tag }}"
+            if [[ -z "$TAG" ]]; then
+              TAG="v0.1.0-pre.${GITHUB_RUN_NUMBER}"
+            fi
+            DO_RELEASE="true"
+          else
+            SHORT_SHA="${GITHUB_SHA::7}"
+            TAG="dev-${SHORT_SHA}"
+            DO_RELEASE="false"
+          fi
+
+          ZIP_NAME="rkp-mfr-auto-${TAG}.zip"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "zip_name=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
+          echo "do_release=${DO_RELEASE}" >> "$GITHUB_OUTPUT"
+          echo "version_code=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+
+      - name: Stamp module.prop and build flashable ZIP
+        run: |
+          sed -i "s/^version=.*/version=${{ steps.meta.outputs.tag }}/" module/module.prop
+          sed -i "s/^versionCode=.*/versionCode=${{ steps.meta.outputs.version_code }}/" module/module.prop
+          chmod 755 module/post-fs-data.sh module/META-INF/com/google/android/update-binary
+          (cd module && zip -r9 "../${{ steps.meta.outputs.zip_name }}" .)
+          unzip -l "${{ steps.meta.outputs.zip_name }}"
+
+      - name: Upload flashable ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.zip_name }}
+          path: ${{ steps.meta.outputs.zip_name }}
+
+      - name: Create GitHub Pre-Release
+        if: steps.meta.outputs.do_release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.meta.outputs.tag }}"
+          ZIP="${{ steps.meta.outputs.zip_name }}"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ZIP" --clobber
+          else
+            gh release create "$TAG" "$ZIP" \
+              --prerelease \
+              --title "RKP Manufacturer Auto-Match ${TAG}" \
+              --generate-notes
+          fi
