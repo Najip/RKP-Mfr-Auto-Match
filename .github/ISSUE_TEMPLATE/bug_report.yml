@@ -1,0 +1,90 @@
+name: Bug report
+description: Something not working
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Fill the required fields or I can't help much. Turn on Debug log in Settings first, reproduce the problem, then export the log.
+        Only tested with OhMyKeymint (TEE engine and PIF engine).
+  - type: input
+    id: version
+    attributes:
+      label: Module version
+      description: Shown on the Home tab, e.g. v0.3.0
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and ROM
+      placeholder: Xiaomi 14T Pro, HyperOS 3
+    validations:
+      required: true
+  - type: input
+    id: root
+    attributes:
+      label: Root manager and version
+      placeholder: KernelSU Next 1.x / APatch / Magisk
+    validations:
+      required: true
+  - type: input
+    id: zygisk
+    attributes:
+      label: Zygisk backend
+      description: What the Home tab indicator says
+      placeholder: ReZygisk, Zygisk Next, ...
+    validations:
+      required: true
+  - type: input
+    id: tee
+    attributes:
+      label: TEE / PIF setup
+      placeholder: OhMyKeymint (TEE + PIF) vX.Y
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: Also say what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Debug log
+      description: Paste it here or attach the exported file (rkp_mfr_auto_log_*.txt). Required.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: app
+    attributes:
+      label: Affected app package
+      description: Only if one app is the problem
+      placeholder: com.example.app
+  - type: checkboxes
+    id: toggles
+    attributes:
+      label: Settings that were on
+      options:
+        - label: Spoof vendor manufacturer
+        - label: Keep global manufacturer stock
+        - label: App in whitelist
+  - type: input
+    id: without
+    attributes:
+      label: Same result with the module disabled?
+      placeholder: yes / no / didn't test
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Screenshots, Duck Detector output, etc.
