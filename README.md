@@ -32,6 +32,8 @@ Flash the zip from Releases in KSU / APatch / Magisk. Remove or disable any old 
 - On a first install or whenever the Zygisk `.so` changes, a reboot is required to load the new native library.
 - You can also tap **Hot Apply** in the WebUI after swapping keyboxes.
 
+Removing the module also wipes its saved settings, whitelist and logs in `/data/adb/rkp_mfr_auto.*`. The props go back to stock after the reboot.
+
 Check what got detected:
 ```sh
 su -c cat /data/adb/modules/rkp_mfr_auto/last.log

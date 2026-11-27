@@ -78,6 +78,19 @@ REBOOT_FLAG="/data/adb/rkp_mfr_auto.reboot"
 # boot (or opening the WebUI) re-checks for Pixel Camera only.
 : > /data/adb/rkp_mfr_auto.cam_auto 2>/dev/null
 
+# The two prop toggles are gone from the WebUI. Reset them right at install
+# so an old "on" value can't stick around, debug log choice is kept.
+OLD_CONF="/data/adb/rkp_mfr_auto.conf"
+if [ -f "$OLD_CONF" ]; then
+  OLD_DBG=0
+  grep -q '^DEBUG_LOG=1' "$OLD_CONF" 2>/dev/null && OLD_DBG=1
+  if grep -qE '^(SPOOF_VENDOR_MFR|STOCK_GLOBAL_MFR)=1' "$OLD_CONF" 2>/dev/null; then
+    ui_print "- Old prop toggle was on, turned it off"
+  fi
+  printf 'SPOOF_VENDOR_MFR=0\nSTOCK_GLOBAL_MFR=0\nDEBUG_LOG=%s\n' "$OLD_DBG" > "$OLD_CONF"
+  chmod 0644 "$OLD_CONF" 2>/dev/null
+fi
+
 # Check if this is an update where native Zygisk .so libraries did NOT change.
 # If unchanged, hot-install scripts + webroot directly into LIVE_DIR and clear
 # KernelSU's pending update marker so the WebUI stays accessible without a reboot.
@@ -99,6 +112,7 @@ if [ "$CAN_HOT_INSTALL" = "1" ]; then
   cp -f "$MODPATH/module.prop" "$LIVE_DIR/module.prop"
   cp -f "$MODPATH/post-fs-data.sh" "$LIVE_DIR/post-fs-data.sh"
   cp -f "$MODPATH/service.sh" "$LIVE_DIR/service.sh"
+  [ -f "$MODPATH/uninstall.sh" ] && cp -f "$MODPATH/uninstall.sh" "$LIVE_DIR/uninstall.sh"
   [ -f "$MODPATH/zygisk/src.sha256" ] && cp -f "$MODPATH/zygisk/src.sha256" "$LIVE_DIR/zygisk/src.sha256"
   chmod 0755 "$LIVE_DIR/post-fs-data.sh" "$LIVE_DIR/service.sh"
   rm -rf "$LIVE_DIR/webroot"

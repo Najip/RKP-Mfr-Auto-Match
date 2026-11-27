@@ -122,7 +122,7 @@ jobs:
         run: |
           sed -i "s/^version=.*/version=${{ steps.meta.outputs.tag }}/" module/module.prop
           sed -i "s/^versionCode=.*/versionCode=${{ steps.meta.outputs.version_code }}/" module/module.prop
-          chmod 755 module/post-fs-data.sh module/service.sh module/META-INF/com/google/android/update-binary
+          chmod 755 module/post-fs-data.sh module/service.sh module/uninstall.sh module/META-INF/com/google/android/update-binary
           (cd module && zip -r9 "../${{ steps.meta.outputs.zip_name }}" .)
           unzip -l "${{ steps.meta.outputs.zip_name }}"
 
