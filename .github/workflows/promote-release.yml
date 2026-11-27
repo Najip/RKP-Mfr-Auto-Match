@@ -1,0 +1,136 @@
+name: Promote to Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: "Reuse build from"
+        type: choice
+        default: "pre"
+        options:
+          - pre
+          - ci
+      release_tag:
+        description: "Release tag (e.g. v1.0.0)"
+        type: string
+        required: true
+      changelog_notes:
+        description: "Optional release notes (leave blank to auto-generate)"
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Download ZIP from latest pre-release or CI run
+        id: fetch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/src_zip /tmp/repack
+          SOURCE="${{ inputs.source }}"
+
+          if [[ "$SOURCE" == "pre" ]]; then
+            PRE_TAG=$(gh release list --limit 30 --json tagName,isPrerelease \
+              --jq '[.[] | select(.isPrerelease == true)][0].tagName')
+            if [[ -z "$PRE_TAG" || "$PRE_TAG" == "null" ]]; then
+              echo "No pre-release found to promote." >&2
+              exit 1
+            fi
+            echo "Promoting from pre-release: ${PRE_TAG}"
+            gh release download "$PRE_TAG" --pattern "*.zip" --dir /tmp/src_zip
+            echo "source_ref=${PRE_TAG}" >> "$GITHUB_OUTPUT"
+          else
+            RUN_ID=$(gh run list --workflow "build.yml" --status success --limit 20 \
+              --json databaseId --jq '.[0].databaseId')
+            if [[ -z "$RUN_ID" || "$RUN_ID" == "null" ]]; then
+              echo "No successful CI run found." >&2
+              exit 1
+            fi
+            echo "Promoting from CI run: ${RUN_ID}"
+            gh run download "$RUN_ID" --name rkp-mfr-auto-zip --dir /tmp/src_zip
+            echo "source_ref=CI run ${RUN_ID}" >> "$GITHUB_OUTPUT"
+          fi
+
+          SRC_FILE=$(ls /tmp/src_zip/*.zip | head -n 1)
+          if [[ -z "$SRC_FILE" ]]; then
+            echo "No ZIP found in downloaded source." >&2
+            exit 1
+          fi
+          echo "src_file=${SRC_FILE}" >> "$GITHUB_OUTPUT"
+
+      - name: Repack ZIP with release version
+        id: pack
+        run: |
+          TAG="${{ inputs.release_tag }}"
+          VER_CODE="$(date -u +%s)"
+          ZIP_NAME="rkp-mfr-auto-${TAG}.zip"
+
+          unzip -q "${{ steps.fetch.outputs.src_file }}" -d /tmp/repack
+          sed -i "s/^version=.*/version=${TAG}/" /tmp/repack/module.prop
+          sed -i "s/^versionCode=.*/versionCode=${VER_CODE}/" /tmp/repack/module.prop
+          (cd /tmp/repack && zip -r9 "${GITHUB_WORKSPACE}/${ZIP_NAME}" .)
+
+          echo "zip_name=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
+          echo "version_code=${VER_CODE}" >> "$GITHUB_OUTPUT"
+
+      - name: Create Full Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ inputs.release_tag }}"
+          ZIP="${{ steps.pack.outputs.zip_name }}"
+          NOTES="${{ inputs.changelog_notes }}"
+
+          if [[ -n "$NOTES" ]]; then
+            gh release create "$TAG" "$ZIP" \
+              --target main \
+              --title "RKP Manufacturer Auto-Match ${TAG}" \
+              --notes "$NOTES"
+          else
+            gh release create "$TAG" "$ZIP" \
+              --target main \
+              --title "RKP Manufacturer Auto-Match ${TAG}" \
+              --generate-notes
+          fi
+
+      - name: Update update.json and changelog.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ inputs.release_tag }}"
+          VER_CODE="${{ steps.pack.outputs.version_code }}"
+          ZIP="${{ steps.pack.outputs.zip_name }}"
+          REPO="${GITHUB_REPOSITORY}"
+
+          cat > update.json <<EOF
+          {
+            "version": "${TAG}",
+            "versionCode": ${VER_CODE},
+            "zipUrl": "https://github.com/${REPO}/releases/download/${TAG}/${ZIP}",
+            "changelog": "https://raw.githubusercontent.com/${REPO}/main/changelog.md"
+          }
+          EOF
+
+          NOTES=$(gh release view "$TAG" --json body --jq '.body')
+          {
+            echo "# ${TAG}"
+            echo ""
+            echo "${NOTES}"
+          } > changelog.md
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add update.json changelog.md
+          git diff --cached --quiet || git commit -m "update.json: ${TAG} [skip ci]"
+          git push origin main

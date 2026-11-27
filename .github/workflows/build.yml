@@ -1,0 +1,160 @@
+name: Build & Deploy
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Build mode"
+        type: choice
+        default: "pre"
+        options:
+          - ci
+          - pre
+          - release
+      tag:
+        description: "Tag name (e.g. v1.0.0; leave blank to auto-generate)"
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine mode and version
+        id: meta
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          VER_CODE="$(date -u +%s)"
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            MODE="${{ inputs.mode }}"
+            TAG="${{ inputs.tag }}"
+            if [[ -z "$TAG" ]]; then
+              if [[ "$MODE" == "release" ]]; then
+                TAG="v1.0.${GITHUB_RUN_NUMBER}"
+              elif [[ "$MODE" == "pre" ]]; then
+                TAG="pre-${GITHUB_RUN_NUMBER}-${SHORT_SHA}"
+              else
+                TAG="ci-${GITHUB_RUN_NUMBER}-${SHORT_SHA}"
+              fi
+            fi
+          elif [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            MODE="ci"
+            TAG="pr-${GITHUB_RUN_NUMBER}-${SHORT_SHA}"
+          elif [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            TAG="${GITHUB_REF_NAME}"
+            if [[ "$TAG" == *-* ]]; then
+              MODE="pre"
+            else
+              MODE="release"
+            fi
+          else
+            # Every push to main deploys a pre-release automatically
+            MODE="pre"
+            TAG="pre-${GITHUB_RUN_NUMBER}-${SHORT_SHA}"
+          fi
+
+          ZIP_NAME="rkp-mfr-auto-${TAG}.zip"
+          echo "mode=${MODE}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "zip_name=${ZIP_NAME}" >> "$GITHUB_OUTPUT"
+          echo "version_code=${VER_CODE}" >> "$GITHUB_OUTPUT"
+
+      - name: Stamp module.prop and build flashable ZIP
+        run: |
+          sed -i "s/^version=.*/version=${{ steps.meta.outputs.tag }}/" module/module.prop
+          sed -i "s/^versionCode=.*/versionCode=${{ steps.meta.outputs.version_code }}/" module/module.prop
+          chmod 755 module/post-fs-data.sh module/META-INF/com/google/android/update-binary
+          (cd module && zip -r9 "../${{ steps.meta.outputs.zip_name }}" .)
+          unzip -l "${{ steps.meta.outputs.zip_name }}"
+
+      - name: Upload flashable ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rkp-mfr-auto-zip
+          path: ${{ steps.meta.outputs.zip_name }}
+
+      - name: Publish Pre-Release
+        if: steps.meta.outputs.mode == 'pre'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.meta.outputs.tag }}"
+          ZIP="${{ steps.meta.outputs.zip_name }}"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ZIP" --clobber
+          else
+            gh release create "$TAG" "$ZIP" \
+              --prerelease \
+              --target "${GITHUB_SHA}" \
+              --title "RKP Manufacturer Auto-Match ${TAG}" \
+              --generate-notes
+          fi
+
+      - name: Publish Full Release
+        if: steps.meta.outputs.mode == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.meta.outputs.tag }}"
+          ZIP="${{ steps.meta.outputs.zip_name }}"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ZIP" --clobber
+            gh release edit "$TAG" --prerelease=false
+          else
+            gh release create "$TAG" "$ZIP" \
+              --target "${GITHUB_SHA}" \
+              --title "RKP Manufacturer Auto-Match ${TAG}" \
+              --generate-notes
+          fi
+
+      - name: Update update.json and changelog.md (Release only)
+        if: steps.meta.outputs.mode == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.meta.outputs.tag }}"
+          VER_CODE="${{ steps.meta.outputs.version_code }}"
+          ZIP="${{ steps.meta.outputs.zip_name }}"
+          REPO="${GITHUB_REPOSITORY}"
+
+          git checkout main
+          git pull --ff-only origin main
+
+          cat > update.json <<EOF
+          {
+            "version": "${TAG}",
+            "versionCode": ${VER_CODE},
+            "zipUrl": "https://github.com/${REPO}/releases/download/${TAG}/${ZIP}",
+            "changelog": "https://raw.githubusercontent.com/${REPO}/main/changelog.md"
+          }
+          EOF
+
+          NOTES=$(gh release view "$TAG" --json body --jq '.body')
+          {
+            echo "# ${TAG}"
+            echo ""
+            echo "${NOTES}"
+          } > changelog.md
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add update.json changelog.md
+          git diff --cached --quiet || git commit -m "update.json: ${TAG} [skip ci]"
+          git push origin main
