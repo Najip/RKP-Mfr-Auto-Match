@@ -46,4 +46,4 @@ Since `resetprop` changes `ro.product.manufacturer` globally, some camera apps (
 If that happens on your device:
 - Try a per-app Zygisk spoofer instead of global `resetprop`, like [COPG-VD](https://github.com/VD171/COPG-VD) (whitelist mode, or blacklist `com.google.android.GoogleCamera` and `com.google.android.apps.camera.services`) or [EasySpoof](https://github.com/TOMMASO26175/easySpoof).
 - Or if you use LSPosed, keep this module and spoof the real manufacturer back just for the camera app with [CamSpoof](https://github.com/indramccaslin/CamSpoof) or [SpoofMyDevice](https://github.com/Xposed-Modules-Repo/com.spoofmydevice).
-- You can also try removing `ro.product.vendor.manufacturer` from `post-fs-data.sh` and rebooting to see if that stops the crash.
+- Try turning off `ro.product.vendor.manufacturer` in the WebUI Settings tab and rebooting to see if that stops the crash.
