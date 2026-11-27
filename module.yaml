@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/KernelSU-Modules/tools/main/schemas/module.schema.json
+schemaVersion: 1
+id: rkp_mfr_auto
+name: RKP Manufacturer Auto-Match
+summary: Auto-detect RKP keybox map[3] manufacturer and match props at boot with Zygisk per-app restore.
+description: README.md
+license: GPL-3.0-only
+homepage: https://github.com/Najip/RKP-Mfr-Auto-Match
+support: https://github.com/Najip/RKP-Mfr-Auto-Match/issues
+tags:
+  - rkp
+  - keybox
+  - zygisk
+  - props
+metamodule: false
+authors:
+  - name: Najip
+    url: https://github.com/Najip
+compatibility:
+  androidMinApi: 29
+  architectures:
+    - arm64-v8a
+    - armeabi-v7a
+release:
+  assetPattern: "rkp-mfr-auto-*.zip"
