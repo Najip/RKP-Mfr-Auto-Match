@@ -17,6 +17,7 @@ namespace {
 constexpr const char *kRealMfrPath = "/data/adb/rkp_mfr_auto.real_mfr";
 constexpr const char *kConfPath = "/data/adb/rkp_mfr_auto.conf";
 constexpr const char *kExcludePath = "/data/adb/rkp_mfr_auto.exclude";
+constexpr const char *kCamAutoPath = "/data/adb/rkp_mfr_auto.cam_auto";
 constexpr const char *kDebugLogPath = "/data/adb/rkp_mfr_auto.log";
 constexpr off_t kMaxLogBytes = 256 * 1024;
 
@@ -130,6 +131,22 @@ static bool pkg_matches(const char *proc_name, const char *pattern) {
     return false;
 }
 
+static bool file_has_package(const char *path, const char *proc_name) {
+    FILE *fp = fopen(path, "r");
+    if (!fp) return false;
+    char line[256];
+    while (fgets(line, sizeof(line), fp)) {
+        trim_line(line);
+        if (line[0] == '\0' || line[0] == '#') continue;
+        if (pkg_matches(proc_name, line)) {
+            fclose(fp);
+            return true;
+        }
+    }
+    fclose(fp);
+    return false;
+}
+
 static bool is_whitelisted_package(const char *proc_name) {
     if (!proc_name || proc_name[0] == '\0') return false;
 
@@ -137,19 +154,8 @@ static bool is_whitelisted_package(const char *proc_name) {
         if (pkg_matches(proc_name, pat)) return true;
     }
 
-    FILE *fp = fopen(kExcludePath, "r");
-    if (fp) {
-        char line[256];
-        while (fgets(line, sizeof(line), fp)) {
-            trim_line(line);
-            if (line[0] == '\0' || line[0] == '#') continue;
-            if (pkg_matches(proc_name, line)) {
-                fclose(fp);
-                return true;
-            }
-        }
-        fclose(fp);
-    }
+    if (file_has_package(kCamAutoPath, proc_name)) return true;
+    if (file_has_package(kExcludePath, proc_name)) return true;
     return false;
 }
 

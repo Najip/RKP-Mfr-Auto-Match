@@ -5,6 +5,7 @@ CONF="/data/adb/rkp_mfr_auto.conf"
 MFR_FILE="/data/adb/rkp_mfr_auto.mfr"
 REAL_MFR_FILE="/data/adb/rkp_mfr_auto.real_mfr"
 EXCLUDE_FILE="/data/adb/rkp_mfr_auto.exclude"
+CAM_AUTO_FILE="/data/adb/rkp_mfr_auto.cam_auto"
 REBOOT_FLAG="/data/adb/rkp_mfr_auto.reboot"
 DEBUG_LOG_FILE="/data/adb/rkp_mfr_auto.log"
 MODPROP="$MODDIR/module.prop"
@@ -372,9 +373,121 @@ list_packages_raw() {
   esac
 }
 
+query_camera_activities() {
+  act="$1"
+  if command -v cmd >/dev/null 2>&1; then
+    cmd package query-activities -a "$act" 2>/dev/null
+  elif [ -x /system/bin/cmd ]; then
+    /system/bin/cmd package query-activities -a "$act" 2>/dev/null
+  elif command -v pm >/dev/null 2>&1; then
+    pm query-activities -a "$act" 2>/dev/null
+  elif [ -x /system/bin/pm ]; then
+    /system/bin/pm query-activities -a "$act" 2>/dev/null
+  fi
+}
+
+get_pkg_path() {
+  if command -v pm >/dev/null 2>&1; then
+    pm path "$1" 2>/dev/null | sed -n 's/^package://p'
+  elif [ -x /system/bin/pm ]; then
+    /system/bin/pm path "$1" 2>/dev/null | sed -n 's/^package://p'
+  elif command -v cmd >/dev/null 2>&1; then
+    cmd package path "$1" 2>/dev/null | sed -n 's/^package://p'
+  elif [ -x /system/bin/cmd ]; then
+    /system/bin/cmd package path "$1" 2>/dev/null | sed -n 's/^package://p'
+  fi
+}
+
+is_gcam_apk() {
+  pkg="$1"
+  apks=$(get_pkg_path "$pkg")
+  [ -z "$apks" ] && return 1
+  for apk in $apks; do
+    dir="${apk%/*}"
+    # Fast check: extracted native libs (libgcastartup.so, libgcam*.so, libgca_jni.so)
+    for libf in "$dir"/lib/*/libgcastartup.so "$dir"/lib/*/libgcam*.so "$dir"/lib/*/libgca_jni.so; do
+      [ -f "$libf" ] && return 0
+    done
+    # Fallback: check APK zip central directory if unzip is available
+    if command -v unzip >/dev/null 2>&1; then
+      if unzip -l "$apk" 2>/dev/null | grep -qE 'libgcastartup\.so|libgcam[^/]*\.so|libgca_jni\.so'; then
+        return 0
+      fi
+    fi
+  done
+  return 1
+}
+
+scan_camera_apps() {
+  RAW_ACTS=$(
+    query_camera_activities android.media.action.IMAGE_CAPTURE
+    query_camera_activities android.media.action.STILL_IMAGE_CAMERA
+  )
+  [ -z "$RAW_ACTS" ] && return 0
+
+  PAIRS=$(printf '%s\n' "$RAW_ACTS" | awk '
+    /Activity #/ || /ActivityInfo:/ {
+      if (pkg != "") print pkg "|" act
+      act = ""; pkg = ""
+      next
+    }
+    /^[ \t]*name=/ {
+      if (act == "") {
+        line = $0; sub(/^[ \t]*name=/, "", line); gsub(/[ \t\r].*/, "", line)
+        act = line
+      }
+    }
+    /^[ \t]*packageName=/ {
+      if (pkg == "") {
+        line = $0; sub(/^[ \t]*packageName=/, "", line); gsub(/[ \t\r].*/, "", line)
+        pkg = line
+      }
+    }
+    END {
+      if (pkg != "") print pkg "|" act
+    }
+  ' | sort -u)
+
+  FOUND_CAMS=""
+  SEEN_PKGS=""
+  for pair in $PAIRS; do
+    pkg="${pair%%|*}"
+    act="${pair#*|}"
+    [ -z "$pkg" ] && continue
+    case " $SEEN_PKGS " in
+      *" $pkg "*) continue ;;
+    esac
+    SEEN_PKGS="$SEEN_PKGS $pkg"
+    reason=""
+    case "$(printf '%s' "$act" | tr 'A-Z' 'a-z')" in
+      *com.google.android.apps.camera*|*cameralauncher*|*gcam*)
+        reason="gcam-activity($act)"
+        ;;
+    esac
+    if [ -z "$reason" ] && is_gcam_apk "$pkg"; then
+      reason="gcam-lib"
+    fi
+    if [ -n "$reason" ]; then
+      FOUND_CAMS="${FOUND_CAMS}${pkg}
+"
+      dlog "cam-detect: $pkg matched $reason"
+    fi
+  done
+
+  printf '%s' "$FOUND_CAMS" | awk 'NF && !seen[$0]++' > "${CAM_AUTO_FILE}.tmp" 2>/dev/null
+  mv "${CAM_AUTO_FILE}.tmp" "$CAM_AUTO_FILE" 2>/dev/null
+  chmod 0644 "$CAM_AUTO_FILE" 2>/dev/null
+}
+
+if [ "$1" = "--scan-cams" ]; then
+  scan_camera_apps
+  exit 0
+fi
+
 if [ "$1" = "--list-apps" ]; then
   SHOW_ALL=0
   [ "$2" = "all" ] && SHOW_ALL=1
+  scan_camera_apps
   PKG_TOOL=$(detect_pkg_tool)
   USER_RAW=$(list_packages_raw "$PKG_TOOL" -3)
   ALL_RAW=$(list_packages_raw "$PKG_TOOL")
@@ -386,7 +499,7 @@ if [ "$1" = "--list-apps" ]; then
   {
     printf '%s\n' "$USER_RAW" | sed -n 's/^package:/U|/p'
     printf '%s\n' "$ALL_RAW" | sed -n 's/^package:/A|/p' | sort -u
-  } | awk -F'|' -v show_all="$SHOW_ALL" -v efile="$EXCLUDE_FILE" '
+  } | awk -F'|' -v show_all="$SHOW_ALL" -v efile="$EXCLUDE_FILE" -v cfile="$CAM_AUTO_FILE" '
     BEGIN {
       if (efile != "") {
         while ((getline line < efile) > 0) {
@@ -396,8 +509,17 @@ if [ "$1" = "--list-apps" ]; then
         }
         close(efile)
       }
+      if (cfile != "") {
+        while ((getline line < cfile) > 0) {
+          gsub(/\r/, "", line)
+          gsub(/^[ \t]+|[ \t]+$/, "", line)
+          if (line != "" && substr(line, 1, 1) != "#") is_cam[line] = 1
+        }
+        close(cfile)
+      }
     }
     function is_fixed(p) {
+      if (p in is_cam) return 1
       if (index(p, "com.google.android.GoogleCamera") == 1) return 1
       if (p == "com.google.android.apps.camera.services") return 1
       if (p == "com.android.camera") return 1
@@ -558,6 +680,7 @@ update_module_desc
 dlog "apply mode=${1:-boot} zygisk=${ZYGISK_BACKEND:-missing} kb=$KB mfr=$MFR real_mfr=${REAL_MFR:-none} rp=${RP:-none} vendor=$SPOOF_VENDOR_MFR"
 
 if [ "$1" = "--hot-apply" ]; then
+  scan_camera_apps
   echo "Zygisk ($ZYGISK_BACKEND): hot-updated mfr=$MFR from $KB (camera apps excluded)" > "$LOG"
   echo "Updated RKP mfr=$MFR for $ZYGISK_BACKEND (restart target apps; reboot if first install)"
 else

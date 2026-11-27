@@ -3,6 +3,7 @@
 ui_print "- Installing RKP Manufacturer Auto-Match (Zygisk)"
 
 set_perm "$MODPATH/post-fs-data.sh" 0 0 0755
+set_perm "$MODPATH/service.sh" 0 0 0755
 
 # Detect Zygisk backend (required)
 ZYGISK_BACKEND=""
