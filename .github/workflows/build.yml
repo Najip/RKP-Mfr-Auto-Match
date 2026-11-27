@@ -93,9 +93,9 @@ jobs:
               MODE="release"
             fi
           else
-            # Every push to main deploys a pre-release automatically
-            MODE="pre"
-            TAG="$(next_pre_tag)"
+            # Push to main runs as a canary CI build; publish Pre-release/Release manually or via Promote Build
+            MODE="ci"
+            TAG="${BASE_VER}-canary-${SHORT_SHA}"
           fi
 
           ARTIFACT_NAME="rkp-mfr-auto-canary-${BASE_VER}-${SHORT_SHA}"

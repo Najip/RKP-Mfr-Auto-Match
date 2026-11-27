@@ -704,8 +704,12 @@ detect_apps() {
 
 update_module_desc() {
   [ -f "$MODPROP" ] || return
-  PENDING_STR=""
-  [ -f "$REBOOT_FLAG" ] && PENDING_STR=" [Reboot pending]"
+  NEED_REBOOT=0
+  [ -f "$REBOOT_FLAG" ] && NEED_REBOOT=1
+  if [ "$DEBUG_LOG" = "1" ] && [ -f /dev/.rkp_mfr_auto_boot_dbg ]; then
+    BDBG=$(head -n 1 /dev/.rkp_mfr_auto_boot_dbg 2>/dev/null)
+    [ "$BDBG" = "0" ] && NEED_REBOOT=1
+  fi
   OWNER_STR=""
   if [ -n "$KB_OWNER" ]; then
     OWNER_STR=" | ${KB_OWNER}"
@@ -713,13 +717,23 @@ update_module_desc() {
     OWNER_STR=" | ${KS_PRIMARY}"
   fi
   if [ -z "$ZYGISK_BACKEND" ]; then
-    DESC="[Zygisk: Missing] Install ReZygisk, Zygisk Next, BreZygisk, or Magisk Zygisk${PENDING_STR}"
+    DESC="❌ Error: Zygisk missing — install ReZygisk, Zygisk Next, BreZygisk, or Magisk Zygisk"
   elif [ -z "$KB" ]; then
-    DESC="[Zygisk: ${ZYGISK_BACKEND} | No keybox${OWNER_STR}] Waiting for RKP keybox.xml${PENDING_STR}"
-  elif [ "$IS_RKP" -eq 0 ] || [ -z "$MFR" ]; then
-    DESC="[Zygisk: ${ZYGISK_BACKEND} | Non-RKP${OWNER_STR}] Module not required for current keybox${PENDING_STR}"
+    DESC="❌ Error: No keybox found (${ZYGISK_BACKEND}${OWNER_STR}) — waiting for keybox.xml"
+  elif [ "$IS_RKP" -eq 1 ] && [ -z "$MFR" ]; then
+    DESC="❌ Error: RKP keybox has no valid manufacturer (${ZYGISK_BACKEND}${OWNER_STR})"
+  elif [ "$IS_RKP" -eq 1 ] && [ -z "$RP" ]; then
+    DESC="❌ Error: resetprop not found (${ZYGISK_BACKEND}${OWNER_STR})"
+  elif [ "$NEED_REBOOT" = "1" ]; then
+    if [ "$IS_RKP" -eq 0 ]; then
+      DESC="🔁 Needs reboot — Standby, non-RKP keybox (${ZYGISK_BACKEND}${OWNER_STR})"
+    else
+      DESC="🔁 Needs reboot — ${ZYGISK_BACKEND} | RKP: ${MFR}${OWNER_STR}"
+    fi
+  elif [ "$IS_RKP" -eq 0 ]; then
+    DESC="💤 Standby — Non-RKP keybox, nothing to spoof (${ZYGISK_BACKEND}${OWNER_STR})"
   else
-    DESC="[Zygisk: ${ZYGISK_BACKEND} | RKP: ${MFR}${OWNER_STR}] Per-app RKP manufacturer match (Pixel Camera excluded)${PENDING_STR}"
+    DESC="✅ Active — ${ZYGISK_BACKEND} | RKP: ${MFR}${OWNER_STR} (Pixel Camera excluded)"
   fi
   TMP_PROP="${MODPROP}.$$.tmp"
   if awk -v d="$DESC" 'BEGIN{done=0} /^description=/{print "description=" d; done=1; next} {print} END{if(!done) print "description=" d}' "$MODPROP" > "$TMP_PROP" 2>/dev/null; then

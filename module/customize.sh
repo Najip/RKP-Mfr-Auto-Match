@@ -68,8 +68,13 @@ fi
 # Check if this is an update where native Zygisk .so libraries did NOT change.
 # If unchanged, hot-install scripts + webroot directly into LIVE_DIR and clear
 # KernelSU's pending update marker so the WebUI stays accessible without a reboot.
+IS_FIRST_INSTALL=0
+if [ ! -d "$LIVE_DIR" ] || [ "$MODPATH" = "$LIVE_DIR" ]; then
+  IS_FIRST_INSTALL=1
+fi
+
 CAN_HOT_INSTALL=0
-if [ -d "$LIVE_DIR" ] && [ "$MODPATH" != "$LIVE_DIR" ]; then
+if [ "$IS_FIRST_INSTALL" = "0" ]; then
   if [ -f "$LIVE_DIR/zygisk/src.sha256" ] && [ -f "$MODPATH/zygisk/src.sha256" ]; then
     cmp -s "$MODPATH/zygisk/src.sha256" "$LIVE_DIR/zygisk/src.sha256" && CAN_HOT_INSTALL=1
   elif [ -f "$LIVE_DIR/zygisk/arm64-v8a.so" ] && [ -f "$MODPATH/zygisk/arm64-v8a.so" ] && \
@@ -165,7 +170,9 @@ if [ "$CAN_HOT_INSTALL" = "1" ]; then
 else
   # --mark-reboot touches the flag and refreshes the module description.
   call_script "$TARGET_SCRIPT" --mark-reboot >/dev/null 2>&1 || touch "$REBOOT_FLAG" 2>/dev/null
-  if [ "$NEED_REBOOT" = "1" ] && [ "$ZYGISK_LIB_SAME" = "1" ]; then
+  if [ "$IS_FIRST_INSTALL" = "1" ]; then
+    ui_print "- Reboot required to activate module (first install)"
+  elif [ "$NEED_REBOOT" = "1" ] && [ "$ZYGISK_LIB_SAME" = "1" ]; then
     ui_print "- Reboot required, a Zygisk setting was changed"
   else
     ui_print "- Reboot required to load updated Zygisk library"

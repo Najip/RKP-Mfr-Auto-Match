@@ -1592,6 +1592,8 @@
       "\" && chmod 0644 \"" + CONF_PATH + "\" 2>/dev/null";
     if (markReboot) {
       cmd += " && " + runScriptCmd("--mark-reboot");
+    } else {
+      cmd += " && " + runScriptCmd("--refresh-desc");
     }
     return ksuExec(cmd);
   }
