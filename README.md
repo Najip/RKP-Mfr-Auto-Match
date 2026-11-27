@@ -57,7 +57,7 @@ Open the module WebUI from KSU / APatch Manager:
 ## Notes on camera apps & strict banking / UPI apps
 
 - **Camera apps**: Pixel Camera, GCam mods (including cloned package names), and common OEM cameras are automatically detected and marked `Fixed` in the **Apps** tab so they receive your real stock manufacturer. Keep `ro.product.vendor.manufacturer` turned off in Settings unless a detector specifically flags it.
-- **Strict banking / UPI apps (e.g. MobiKwik)**:
+- **Strict banking / UPI apps**:
   1. First, try toggling the app on in the **Apps** whitelist and force-stopping/reopening it. User-whitelisted apps use stealth Java restore + immediate `dlclose` so no Zygisk `.so` stays mapped in memory.
   2. If the app still fails (usually because it is in KSU Unmount / Zygisk DenyList, which blocks Zygisk from injecting at all), turn on **Keep global `ro.product.manufacturer` stock** in WebUI **Settings** and reboot. That leaves `ro.product.manufacturer` untouched globally so DenyList apps see stock props with zero Zygisk maps, while non-whitelisted apps get stealth Java `Build.MANUFACTURER` spoofing.
   3. If you still hit issues, turn on **Enable debug log** in Settings, reproduce the issue once, tap **Export to Download**, and share the `.txt` file from `/sdcard/Download/`.
