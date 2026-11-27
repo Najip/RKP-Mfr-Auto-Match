@@ -326,24 +326,14 @@ detect_apps() {
     fi
   done
 
-  CAM=""
-  for entry in \
-    "com.google.android.GoogleCamera|Pixel Camera" \
-    "com.google.android.apps.camera.services|Pixel Camera Services"
-  do
-    pkg="${entry%%|*}"
-    label="${entry#*|}"
-    if printf '%s\n' "$PKGS" | grep -qx "$pkg"; then
-      if [ -n "$CAM" ]; then
-        CAM="${CAM};${label}|${pkg}"
-      else
-        CAM="${label}|${pkg}"
-      fi
-    fi
-  done
-
   echo "DETECTED_APPS=$FOUND"
-  echo "CAMERA_APPS=$CAM"
+  detect_pixel_camera
+  if [ -s "$CAM_AUTO_FILE" ]; then
+    echo "PIXEL_CAM=1"
+    echo "PIXEL_CAM_REASON=$PIXEL_CAM_REASON"
+  else
+    echo "PIXEL_CAM=0"
+  fi
 }
 
 update_module_desc() {
@@ -357,7 +347,7 @@ update_module_desc() {
   elif [ "$IS_RKP" -eq 0 ] || [ -z "$MFR" ]; then
     DESC="[Zygisk: ${ZYGISK_BACKEND} | Non-RKP] Module not required for current keybox${PENDING_STR}"
   else
-    DESC="[Zygisk: ${ZYGISK_BACKEND} | RKP: ${MFR}] Per-app RKP manufacturer match (camera apps excluded)${PENDING_STR}"
+    DESC="[Zygisk: ${ZYGISK_BACKEND} | RKP: ${MFR}] Per-app RKP manufacturer match (Pixel Camera excluded)${PENDING_STR}"
   fi
   awk -v d="$DESC" 'BEGIN{done=0} /^description=/{print "description=" d; done=1; next} {print} END{if(!done) print "description=" d}' "$MODPROP" > "${MODPROP}.tmp" 2>/dev/null && mv "${MODPROP}.tmp" "$MODPROP"
 }
@@ -387,114 +377,67 @@ list_packages_raw() {
   esac
 }
 
-query_camera_activities() {
-  act="$1"
-  if command -v cmd >/dev/null 2>&1; then
-    cmd package query-activities -a "$act" 2>/dev/null
-  elif [ -x /system/bin/cmd ]; then
-    /system/bin/cmd package query-activities -a "$act" 2>/dev/null
-  elif command -v pm >/dev/null 2>&1; then
-    pm query-activities -a "$act" 2>/dev/null
-  elif [ -x /system/bin/pm ]; then
-    /system/bin/pm query-activities -a "$act" 2>/dev/null
-  fi
-}
+# Pixel Camera only. GCam ports and OEM cameras are left alone.
+# Fix is applied only when the real Pixel Camera package is installed AND
+# the phone is a real Google Pixel or the ROM is Pixel based.
+PIXEL_CAM_PKG="com.google.android.GoogleCamera"
+PIXEL_CAM_SVC="com.google.android.apps.camera.services"
+PIXEL_CAM_REASON=""
 
-get_pkg_path() {
-  if command -v pm >/dev/null 2>&1; then
-    pm path "$1" 2>/dev/null | sed -n 's/^package://p'
-  elif [ -x /system/bin/pm ]; then
-    /system/bin/pm path "$1" 2>/dev/null | sed -n 's/^package://p'
-  elif command -v cmd >/dev/null 2>&1; then
-    cmd package path "$1" 2>/dev/null | sed -n 's/^package://p'
-  elif [ -x /system/bin/cmd ]; then
-    /system/bin/cmd package path "$1" 2>/dev/null | sed -n 's/^package://p'
-  fi
-}
-
-is_gcam_apk() {
-  pkg="$1"
-  apks=$(get_pkg_path "$pkg")
-  [ -z "$apks" ] && return 1
-  for apk in $apks; do
-    dir="${apk%/*}"
-    # Fast check: extracted native libs (libgcastartup.so, libgcam*.so, libgca_jni.so)
-    for libf in "$dir"/lib/*/libgcastartup.so "$dir"/lib/*/libgcam*.so "$dir"/lib/*/libgca_jni.so; do
-      [ -f "$libf" ] && return 0
-    done
-    # Fallback: check APK zip central directory if unzip is available
-    if command -v unzip >/dev/null 2>&1; then
-      if unzip -l "$apk" 2>/dev/null | grep -qE 'libgcastartup\.so|libgcam[^/]*\.so|libgca_jni\.so'; then
-        return 0
-      fi
-    fi
+is_real_pixel() {
+  for p in ro.product.system.manufacturer ro.product.odm.manufacturer ro.product.brand ro.product.system.brand; do
+    v=$(getprop "$p" 2>/dev/null | tr 'A-Z' 'a-z')
+    [ "$v" = "google" ] && return 0
   done
+  r=$(head -n 1 "$REAL_MFR_FILE" 2>/dev/null | tr 'A-Z' 'a-z')
+  [ "$r" = "google" ] && return 0
   return 1
 }
 
-scan_camera_apps() {
-  RAW_ACTS=$(
-    query_camera_activities android.media.action.IMAGE_CAPTURE
-    query_camera_activities android.media.action.STILL_IMAGE_CAMERA
-  )
-  [ -z "$RAW_ACTS" ] && return 0
+is_pixel_rom() {
+  feats=""
+  if command -v pm >/dev/null 2>&1; then
+    feats=$(pm list features 2>/dev/null)
+  elif [ -x /system/bin/pm ]; then
+    feats=$(/system/bin/pm list features 2>/dev/null)
+  fi
+  printf '%s\n' "$feats" | grep -qE 'com\.google\.android\.feature\.PIXEL(_[0-9]{4})?_EXPERIENCE' && return 0
+  grep -qsE 'com\.google\.android\.feature\.PIXEL(_[0-9]{4})?_EXPERIENCE' \
+    /product/etc/sysconfig/*.xml /system/etc/sysconfig/*.xml /system_ext/etc/sysconfig/*.xml 2>/dev/null && return 0
+  return 1
+}
 
-  PAIRS=$(printf '%s\n' "$RAW_ACTS" | awk '
-    /Activity #/ || /ActivityInfo:/ {
-      if (pkg != "") print pkg "|" act
-      act = ""; pkg = ""
-      next
-    }
-    /^[ \t]*name=/ {
-      if (act == "") {
-        line = $0; sub(/^[ \t]*name=/, "", line); gsub(/[ \t\r].*/, "", line)
-        act = line
-      }
-    }
-    /^[ \t]*packageName=/ {
-      if (pkg == "") {
-        line = $0; sub(/^[ \t]*packageName=/, "", line); gsub(/[ \t\r].*/, "", line)
-        pkg = line
-      }
-    }
-    END {
-      if (pkg != "") print pkg "|" act
-    }
-  ' | sort -u)
+detect_pixel_camera() {
+  PKGS_ALL=$(pm list packages 2>/dev/null | sed 's/^package://')
+  # PackageManager not ready yet (early boot): keep the previous result
+  [ -z "$PKGS_ALL" ] && return 0
 
-  FOUND_CAMS=""
-  SEEN_PKGS=""
-  for pair in $PAIRS; do
-    pkg="${pair%%|*}"
-    act="${pair#*|}"
-    [ -z "$pkg" ] && continue
-    case " $SEEN_PKGS " in
-      *" $pkg "*) continue ;;
-    esac
-    SEEN_PKGS="$SEEN_PKGS $pkg"
-    reason=""
-    case "$(printf '%s' "$act" | tr 'A-Z' 'a-z')" in
-      *com.google.android.apps.camera*|*cameralauncher*|*gcam*)
-        reason="gcam-activity($act)"
-        ;;
-    esac
-    if [ -z "$reason" ] && is_gcam_apk "$pkg"; then
-      reason="gcam-lib"
+  PIXEL_CAM_REASON=""
+  OUT=""
+  if printf '%s\n' "$PKGS_ALL" | grep -qx "$PIXEL_CAM_PKG"; then
+    if is_real_pixel; then
+      PIXEL_CAM_REASON="pixel"
+    elif is_pixel_rom; then
+      PIXEL_CAM_REASON="pixel_rom"
     fi
-    if [ -n "$reason" ]; then
-      FOUND_CAMS="${FOUND_CAMS}${pkg}
+    if [ -n "$PIXEL_CAM_REASON" ]; then
+      OUT="$PIXEL_CAM_PKG
 "
-      dlog "cam-detect: $pkg matched $reason"
+      printf '%s\n' "$PKGS_ALL" | grep -qx "$PIXEL_CAM_SVC" && OUT="${OUT}${PIXEL_CAM_SVC}
+"
+      dlog "pixel-cam: detected ($PIXEL_CAM_REASON), fix applied"
+    else
+      dlog "pixel-cam: $PIXEL_CAM_PKG installed but not a Pixel / Pixel based ROM, skipped"
     fi
-  done
+  fi
 
-  printf '%s' "$FOUND_CAMS" | awk 'NF && !seen[$0]++' > "${CAM_AUTO_FILE}.tmp" 2>/dev/null
+  printf '%s' "$OUT" > "${CAM_AUTO_FILE}.tmp" 2>/dev/null
   mv "${CAM_AUTO_FILE}.tmp" "$CAM_AUTO_FILE" 2>/dev/null
   chmod 0644 "$CAM_AUTO_FILE" 2>/dev/null
 }
 
 if [ "$1" = "--scan-cams" ]; then
-  scan_camera_apps
+  detect_pixel_camera
   exit 0
 fi
 
@@ -571,7 +514,6 @@ fi
 if [ "$1" = "--list-apps" ]; then
   SHOW_ALL=0
   [ "$2" = "all" ] && SHOW_ALL=1
-  scan_camera_apps
   PKG_TOOL=$(detect_pkg_tool)
   USER_RAW=$(list_packages_raw "$PKG_TOOL" -3)
   ALL_RAW=$(list_packages_raw "$PKG_TOOL")
@@ -602,18 +544,6 @@ if [ "$1" = "--list-apps" ]; then
         close(cfile)
       }
     }
-    function is_fixed(p) {
-      if (p in is_cam) return 1
-      if (index(p, "com.google.android.GoogleCamera") == 1) return 1
-      if (p == "com.google.android.apps.camera.services") return 1
-      if (p == "com.android.camera") return 1
-      if (p == "com.sec.android.app.camera") return 1
-      if (p == "com.oplus.camera") return 1
-      if (p == "com.oneplus.camera") return 1
-      if (p == "org.codeaurora.snapcam") return 1
-      if (p == "com.xiaomi.camera") return 1
-      return 0
-    }
     $1 == "U" {
       gsub(/\r/, "", $2)
       if ($2 != "") is_user[$2] = 1
@@ -623,11 +553,11 @@ if [ "$1" = "--list-apps" ]; then
       p = $2
       gsub(/\r/, "", p)
       if (p == "") next
-      f = is_fixed(p)
+      if (p in is_cam) next
       u = (p in is_user) ? 1 : 0
-      e = (f || (p in is_excl)) ? 1 : 0
-      if (show_all || u || f || (p in is_excl)) {
-        printf "%s|%s|%d|%d\n", p, (u ? "user" : "sys"), f, e
+      e = (p in is_excl) ? 1 : 0
+      if (show_all || u || e) {
+        printf "%s|%s|%d\n", p, (u ? "user" : "sys"), e
       }
     }
   '
@@ -750,7 +680,7 @@ chmod 0644 "$MFR_FILE" 2>/dev/null
 
 # Apply RKP manufacturer via resetprop:
 # - Default (STOCK_GLOBAL_MFR=0): set ro.product.manufacturer globally so detectors pass
-#   with zero Zygisk maps; Zygisk restores real_mfr for cameras & whitelisted apps.
+#   with zero Zygisk maps; Zygisk restores real_mfr for Pixel Camera & whitelisted apps.
 # - Stock global mode (STOCK_GLOBAL_MFR=1): keep ro.product.manufacturer stock so DenyList
 #   banking/UPI apps stay completely untouched; only set manufacturer_for_attestation globally.
 if [ -n "$RP" ]; then
@@ -770,9 +700,9 @@ update_module_desc
 dlog "apply mode=${1:-boot} zygisk=${ZYGISK_BACKEND:-missing} kb=$KB mfr=$MFR real_mfr=${REAL_MFR:-none} rp=${RP:-none} vendor=$SPOOF_VENDOR_MFR stock_global=$STOCK_GLOBAL_MFR"
 
 if [ "$1" = "--hot-apply" ]; then
-  scan_camera_apps
-  echo "Zygisk ($ZYGISK_BACKEND): hot-updated mfr=$MFR from $KB (camera apps excluded)" > "$LOG"
+  detect_pixel_camera
+  echo "Zygisk ($ZYGISK_BACKEND): hot-updated mfr=$MFR from $KB (Pixel Camera excluded)" > "$LOG"
   echo "Updated RKP mfr=$MFR for $ZYGISK_BACKEND (restart target apps; reboot if first install)"
 else
-  echo "Zygisk ($ZYGISK_BACKEND): mfr=$MFR from $KB (per-app, camera apps excluded)" > "$LOG"
+  echo "Zygisk ($ZYGISK_BACKEND): mfr=$MFR from $KB (per-app, Pixel Camera excluded)" > "$LOG"
 fi

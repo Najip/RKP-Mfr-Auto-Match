@@ -22,21 +22,11 @@ constexpr const char *kCamAutoPath = "/data/adb/rkp_mfr_auto.cam_auto";
 constexpr const char *kDebugLogPath = "/data/adb/rkp_mfr_auto.log";
 constexpr off_t kMaxLogBytes = 256 * 1024;
 
-constexpr const char *kDefaultExcluded[] = {
-    "com.google.android.GoogleCamera",
-    "com.google.android.apps.camera.services",
-    "com.android.camera",
-    "com.sec.android.app.camera",
-    "com.oplus.camera",
-    "com.oneplus.camera",
-    "org.codeaurora.snapcam",
-    "com.xiaomi.camera",
-};
 
 // Action returned by companion:
 // 0 = do nothing (dlclose immediately)
 // 1 = stealth Java Build.MANUFACTURER set + dlclose (zero maps left behind)
-// 2 = full native PLT hook + Java Build.MANUFACTURER set (for fixed camera apps only)
+// 2 = full native PLT hook + Java Build.MANUFACTURER set (Pixel Camera only)
 enum Action : uint8_t {
     ACTION_NONE = 0,
     ACTION_STEALTH_JAVA = 1,
@@ -136,10 +126,7 @@ static bool pkg_matches(const char *proc_name, const char *pattern) {
     if (plen == 0) return false;
     if (strncmp(proc_name, pattern, plen) != 0) return false;
     char next = proc_name[plen];
-    if (next == '\0' || next == ':') return true;
-    // Match cloned GoogleCamera packages (e.g. com.google.android.GoogleCameraEng)
-    if (strcmp(pattern, "com.google.android.GoogleCamera") == 0) return true;
-    return false;
+    return next == '\0' || next == ':';
 }
 
 static bool file_has_package(const char *path, const char *proc_name) {
@@ -159,10 +146,9 @@ static bool file_has_package(const char *path, const char *proc_name) {
 }
 
 static bool is_camera_package(const char *proc_name) {
+    // Only filled by post-fs-data.sh when the real Pixel Camera is installed
+    // on a real Pixel or a Pixel based ROM.
     if (!proc_name || proc_name[0] == '\0') return false;
-    for (const char *pat : kDefaultExcluded) {
-        if (pkg_matches(proc_name, pat)) return true;
-    }
     return file_has_package(kCamAutoPath, proc_name);
 }
 
@@ -250,7 +236,7 @@ static void companion_handler(int fd) {
     } else {
         // Default mode: ro.product.manufacturer is set globally to RKP mfr so detectors pass
         // with zero Zygisk maps.
-        // - Fixed camera apps get full native+Java restore to real_mfr.
+        // - Pixel Camera (real Pixel / Pixel based ROM only) gets full native+Java restore to real_mfr.
         // - User-whitelisted apps get stealth Java restore + immediate dlclose (zero maps).
         if (is_cam) {
             if (read_single_line(kRealMfrPath, reply.target_mfr, sizeof(reply.target_mfr))) {

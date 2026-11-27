@@ -1,7 +1,7 @@
 #!/system/bin/sh
 MODDIR="${0%/*}"
 
-# Wait for PackageManagerService after boot, then scan for Pixel Camera / GCam mods
+# Wait for PackageManagerService after boot, then check for Pixel Camera (real Pixel / Pixel based ROM only)
 # regardless of cloned package names.
 i=0
 while [ "$(getprop sys.boot_completed 2>/dev/null)" != "1" ] && [ "$i" -lt 60 ]; do

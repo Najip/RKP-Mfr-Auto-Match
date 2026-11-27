@@ -74,6 +74,10 @@ fi
 LIVE_DIR="/data/adb/modules/rkp_mfr_auto"
 REBOOT_FLAG="/data/adb/rkp_mfr_auto.reboot"
 
+# Old builds listed GCam ports / OEM cameras here. Start clean, the next
+# boot (or opening the WebUI) re-checks for Pixel Camera only.
+: > /data/adb/rkp_mfr_auto.cam_auto 2>/dev/null
+
 # Check if this is an update where native Zygisk .so libraries did NOT change.
 # If unchanged, hot-install scripts + webroot directly into LIVE_DIR and clear
 # KernelSU's pending update marker so the WebUI stays accessible without a reboot.

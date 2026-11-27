@@ -8,7 +8,7 @@ Detection of a global `ro.product.manufacturer` change is easy if a detector com
 
 ## 1. Attestation-only test mode (easy)
 
-Only set `ro.product.manufacturer_for_attestation` and leave `ro.product.manufacturer` alone. If the detector passes like this, nothing else needs to be spoofed and cameras / banking apps don't need any workaround. Will be a toggle in Settings, off by default, needs reboot.
+Only set `ro.product.manufacturer_for_attestation` and leave `ro.product.manufacturer` alone. If the detector passes like this, nothing else needs to be spoofed and Pixel Camera / banking apps don't need any workaround. Will be a toggle in Settings, off by default, needs reboot.
 
 ## 2. Props health check in WebUI (easy)
 

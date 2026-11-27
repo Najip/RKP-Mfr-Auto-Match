@@ -703,7 +703,7 @@
       <div class="card">
         <div class="card-title">App Whitelist (Excluded from Spoofing)</div>
         <div class="setting-desc" style="margin-bottom: 10px;">
-          Only installed apps are shown. Turn on an app to keep its real manufacturer (no spoofing). Pixel Camera and Google camera apps are fixed so they never crash. Changes apply on next app restart (no reboot required).
+          Only installed apps are shown. Turn on an app to keep its real manufacturer (no spoofing). Changes apply on next app restart (no reboot required).
         </div>
         <input type="search" id="appSearch" class="search-input" placeholder="Search installed package..." />
         <div class="filter-row">
@@ -725,7 +725,7 @@
           <div>
             <div class="setting-title">Spoof ro.product.vendor.manufacturer</div>
             <div class="setting-desc">
-              Off by default so camera apps (like Pixel Camera or OEM cameras) are less likely to crash. Turn this on if detected apps still flag a vendor manufacturer mismatch.
+              Off by default. Only turn this on if a detector still flags a vendor manufacturer mismatch. Pixel Camera still gets the stock value back when it is detected.
             </div>
           </div>
           <label class="switch">
@@ -943,12 +943,12 @@
       }[c]));
     }
 
-    function renderApps(detectedApps, cameraApps, isRkp, rkpMfr, spoofVendor) {
+    function renderApps(detectedApps, pixelCam, pixelCamReason, isRkp, rkpMfr, spoofVendor) {
       const box = document.getElementById("appsContent");
       let html = "";
 
-      if (detectedApps.length === 0 && cameraApps.length === 0) {
-        box.innerHTML = '<div class="setting-desc">No known detector or Pixel camera apps found.</div>';
+      if (detectedApps.length === 0 && !pixelCam) {
+        box.innerHTML = '<div class="setting-desc">No known detector apps found.</div>';
         return;
       }
 
@@ -960,12 +960,9 @@
         html += '</div>';
       }
 
-      if (cameraApps.length > 0) {
-        html += '<div class="app-list" style="margin-top:8px;">';
-        cameraApps.forEach((a) => {
-          html += `<div class="app-item"><div><div class="app-name">${escapeHtml(a.label)}</div><div class="app-pkg">${escapeHtml(a.pkg)}</div></div><span class="pill warn">Camera</span></div>`;
-        });
-        html += '</div>';
+      if (pixelCam) {
+        const where = pixelCamReason === "pixel" ? "Google Pixel" : "Pixel based ROM";
+        html += `<div class="app-list" style="margin-top:8px;"><div class="app-item"><div><div class="app-name">Pixel Camera detected, fix applied</div><div class="app-pkg">${where}, stock manufacturer kept for the camera</div></div><span class="pill ok">Fixed</span></div></div>`;
       }
 
       if (isRkp && rkpMfr && detectedApps.length > 0 && !spoofVendor) {
@@ -973,14 +970,6 @@
           <div class="suggest-box">
             <div>Some of these apps may check <code>ro.product.vendor.manufacturer</code>. If they still flag a mismatch, try turning it on in Settings.</div>
             <button type="button" class="link-btn" id="goSettingsBtn">Open Settings</button>
-          </div>
-        `;
-      }
-
-      if (cameraApps.length > 0 && spoofVendor) {
-        html += `
-          <div class="suggest-box caution">
-            <div>Pixel Camera is installed and <code>ro.product.vendor.manufacturer</code> is currently ON. If the camera crashes, turn it off in Settings.</div>
           </div>
         `;
       }
@@ -1012,7 +1001,8 @@
       const zygiskBackend = data.ZYGISK_BACKEND || "";
       const pendingReboot = data.PENDING_REBOOT === "1";
       const detectedApps = parseAppList(data.DETECTED_APPS || "");
-      const cameraApps = parseAppList(data.CAMERA_APPS || "");
+      const pixelCam = data.PIXEL_CAM === "1";
+      const pixelCamReason = data.PIXEL_CAM_REASON || "";
 
       document.getElementById("rebootBanner").classList.toggle("show", pendingReboot);
       document.getElementById("kbPath").textContent = kbPath || "Not found";
@@ -1031,7 +1021,7 @@
       document.getElementById("debugLogToggle").checked = debugLog;
       loadDebugLog();
 
-      renderApps(detectedApps, cameraApps, isRkp, rkpMfr, spoofVendor);
+      renderApps(detectedApps, pixelCam, pixelCamReason, isRkp, rkpMfr, spoofVendor);
 
       const kbTypeEl = document.getElementById("kbType");
       if (!zygiskBackend) {
@@ -1063,7 +1053,7 @@
         setBanner(
           "ok",
           `Active via ${zygiskBackend} (${rkpMfr})`,
-          "RKP manufacturer applied globally; Zygisk restores stock manufacturer for camera and whitelisted apps only."
+          "RKP manufacturer applied globally; Zygisk restores stock manufacturer for Pixel Camera and whitelisted apps only."
         );
       }
     }
@@ -1085,14 +1075,12 @@
         return {
           pkg: parts[0] || "",
           type: parts[1] || "user",
-          fixed: parts[2] === "1",
-          excluded: parts[3] === "1"
+          excluded: parts[2] === "1"
         };
       }).filter((a) => a.pkg);
 
-      // Sort: fixed first, then user-excluded, then alphabetical
+      // Sort: excluded first, then alphabetical
       installedApps.sort((a, b) => {
-        if (a.fixed !== b.fixed) return a.fixed ? -1 : 1;
         if (a.excluded !== b.excluded) return a.excluded ? -1 : 1;
         return a.pkg.localeCompare(b.pkg);
       });
@@ -1117,9 +1105,7 @@
 
       let html = "";
       filtered.forEach((a) => {
-        const badge = a.fixed
-          ? '<span class="pill warn">Fixed</span>'
-          : (a.type === "sys" ? '<span class="pill info">System</span>' : "");
+        const badge = a.type === "sys" ? '<span class="pill info">System</span>' : "";
         html += `
           <div class="app-item">
             <div style="min-width:0;flex:1;">
@@ -1127,7 +1113,7 @@
               ${badge ? `<div style="margin-top:4px;">${badge}</div>` : ""}
             </div>
             <label class="switch">
-              <input type="checkbox" class="wl-toggle" data-pkg="${escapeHtml(a.pkg)}" ${a.excluded ? "checked" : ""} ${a.fixed ? "disabled" : ""} />
+              <input type="checkbox" class="wl-toggle" data-pkg="${escapeHtml(a.pkg)}" ${a.excluded ? "checked" : ""} />
               <span class="slider"></span>
             </label>
           </div>
@@ -1138,7 +1124,7 @@
 
     async function saveExcludeList() {
       const custom = installedApps
-        .filter((a) => a.excluded && !a.fixed)
+        .filter((a) => a.excluded)
         .map((a) => a.pkg)
         .filter((p) => /^[a-zA-Z0-9._-]+$/.test(p));
       const payload = custom.join("\\n") + (custom.length ? "\\n" : "");
@@ -1159,7 +1145,7 @@
       if (!cb || cb.disabled) return;
       const pkg = cb.dataset.pkg;
       const item = installedApps.find((a) => a.pkg === pkg);
-      if (!item || item.fixed) return;
+      if (!item) return;
       item.excluded = cb.checked;
       await saveExcludeList();
     });
