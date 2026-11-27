@@ -4,6 +4,8 @@ Simple KSU / APatch / Magisk module to auto-match manufacturer props with your a
 
 Instead of hardcoding `nubia` (or whatever OEM the public RKP kb is from), this reads `map[3]` straight from your `keybox.xml` at boot and applies it via `resetprop`. Should stay working even if you switch to a different public RKP kb later.
 
+Only tested with [ITxiao6666/OhMyKeymint](https://github.com/ITxiao6666/OhMyKeymint) (both its TEE engine for keybox and its PIF engine).
+
 ## What it does
 
 On boot (`post-fs-data`), it checks:
