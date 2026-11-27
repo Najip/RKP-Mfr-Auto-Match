@@ -380,26 +380,53 @@ valid_mfr() {
   return 0
 }
 
+# Variant of the shared tricky_store id (TrickyStore, OSS, TEESimulator-RS).
+ks_tricky_variant() {
+  d="$1"
+  nm="$2"
+  if [ -f "$d/libTrickyStoreOSS.so" ]; then
+    echo "TrickyStoreOSS"
+    return
+  fi
+  if [ -f "$d/libcertgen.so" ] || [ -f "$d/supervisor" ]; then
+    echo "TEESimulatorRS"
+    return
+  fi
+  case "$nm" in
+    *Tricky*Store*OSS*|*TrickyStore*OSS*) echo "TrickyStoreOSS"; return ;;
+    *TEESimulator*RS*|*TEESimulator-RS*) echo "TEESimulatorRS"; return ;;
+    *TEESimulator*|*TEESim*) echo "TEESimulator"; return ;;
+  esac
+  echo "TrickyStore"
+}
+
 ks_label_from_dir() {
   d="$1"
   id="${d##*/}"
   nm=""
   [ -f "$d/module.prop" ] && nm=$(grep -iE '^name=' "$d/module.prop" 2>/dev/null | head -n 1 | cut -d= -f2-)
+  # Known module ids are authoritative.
+  case "$id" in
+    oh_my_keymint) echo "OhMyKeymint"; return ;;
+    teesim) echo "TEESimulator"; return ;;
+    tricky_store) ks_tricky_variant "$d" "$nm"; return ;;
+  esac
+  # Forks with a custom id need a provider-specific file or an exact name.
+  # Deliberately no bare "*OSS*" match: HMA-OSS Zygisk and other consumer
+  # modules used to be mistaken for TrickyStore OSS and could win the keybox
+  # selection over the keystore module that is actually installed.
   [ -f "$d/libTrickyStoreOSS.so" ] && { echo "TrickyStoreOSS"; return; }
   if [ -f "$d/libcertgen.so" ] || [ -f "$d/supervisor" ]; then
     echo "TEESimulatorRS"
     return
   fi
-  case "$id" in
-    oh_my_keymint) echo "OhMyKeymint"; return ;;
-    teesim) echo "TEESimulator"; return ;;
-  esac
+  [ -f "$d/libTrickyStore.so" ] && { echo "TrickyStore"; return; }
   case "$nm" in
-    *TEESimulator*RS*|*TEESimulatorRS*) echo "TEESimulatorRS"; return ;;
+    *Tricky*Store*OSS*|*TrickyStore*OSS*) echo "TrickyStoreOSS"; return ;;
+    *TEESimulator*RS*|*TEESimulator-RS*) echo "TEESimulatorRS"; return ;;
     *TEESimulator*|*TEESim*) echo "TEESimulator"; return ;;
-    *OSS*) echo "TrickyStoreOSS"; return ;;
-    *Tricky*) echo "TrickyStore"; return ;;
-    *Keymint*|*KeyMint*) echo "OhMyKeymint"; return ;;
+    *Tricky*Store*|*TrickyStore*) echo "TrickyStore"; return ;;
+    *Oh*Keymint*|*OhMyKeymint*) echo "OhMyKeymint"; return ;;
   esac
   echo ""
 }
