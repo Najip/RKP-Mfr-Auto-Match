@@ -1135,10 +1135,24 @@ if [ "$1" = "--restart-apps" ]; then
   fi
   STOPPED=0
   AUTOSTARTED=0
-  for pkg in "$@"; do
+  SEEN_PKGS=" "
+  EXTRA_CAMS=""
+  if [ -s "$CAM_AUTO_FILE" ]; then
+    while IFS= read -r cp; do
+      case "$cp" in
+        ""|"#"*|*[!a-zA-Z0-9._-]*) continue ;;
+      esac
+      EXTRA_CAMS="$EXTRA_CAMS $cp"
+    done < "$CAM_AUTO_FILE"
+  fi
+  for pkg in "$@" $EXTRA_CAMS; do
     case "$pkg" in
       ""|*[!a-zA-Z0-9._-]*) continue ;;
     esac
+    case "$SEEN_PKGS" in
+      *" $pkg "*) continue ;;
+    esac
+    SEEN_PKGS="${SEEN_PKGS}${pkg} "
     if [ -n "$AM_BIN" ]; then
       "$AM_BIN" force-stop "$pkg" >/dev/null 2>&1
     fi
@@ -1354,8 +1368,49 @@ dlog "apply mode=${1:-boot} zygisk=${ZYGISK_BACKEND:-missing} kb=$KB mfr=$MFR re
 
 if [ "$1" = "--hot-apply" ]; then
   detect_pixel_camera
-  echo "Zygisk ($ZYGISK_BACKEND): hot-updated mfr=$MFR from $KB (Pixel Camera excluded)" > "$LOG"
-  echo "Updated RKP mfr=$MFR for $ZYGISK_BACKEND (restart target apps; reboot if first install)"
+  IS_FIRST=0
+  [ "$2" = "--first-install" ] && IS_FIRST=1
+  HAS_WL=0
+  if [ -f "$EXCLUDE_FILE" ] && grep -qE '^[a-zA-Z0-9._-]+$' "$EXCLUDE_FILE" 2>/dev/null; then
+    HAS_WL=1
+  fi
+  CAM_CLEARED=0
+  if [ "$IS_FIRST" = "0" ] && [ -s "$CAM_AUTO_FILE" ]; then
+    AM_BIN=""
+    if command -v am >/dev/null 2>&1; then
+      AM_BIN="am"
+    elif [ -x /system/bin/am ]; then
+      AM_BIN="/system/bin/am"
+    fi
+    while IFS= read -r cp; do
+      case "$cp" in
+        ""|"#"*|*[!a-zA-Z0-9._-]*) continue ;;
+      esac
+      [ -n "$AM_BIN" ] && "$AM_BIN" force-stop "$cp" >/dev/null 2>&1
+      rm -rf \
+        "/data/user/0/$cp/cache/"* \
+        "/data/user/0/$cp/code_cache/"* \
+        "/data/user_de/0/$cp/cache/"* \
+        "/data/user_de/0/$cp/code_cache/"* \
+        "/sdcard/Android/data/$cp/cache/"* 2>/dev/null
+      CAM_CLEARED=1
+      dlog "hot-apply cleared Pixel Camera cache: $cp"
+    done < "$CAM_AUTO_FILE"
+  fi
+  echo "Zygisk ($ZYGISK_BACKEND): hot-updated mfr=$MFR from $KB" > "$LOG"
+  MSG="Updated RKP mfr=$MFR for $ZYGISK_BACKEND"
+  EXTRA=""
+  if [ "$IS_FIRST" = "0" ]; then
+    [ "$CAM_CLEARED" = "1" ] && EXTRA="Pixel Camera restarted & cache cleared"
+    if [ "$HAS_WL" = "1" ]; then
+      EXTRA="${EXTRA:+$EXTRA; }restart whitelisted apps if needed"
+    fi
+  fi
+  if [ -n "$EXTRA" ]; then
+    echo "$MSG ($EXTRA)"
+  else
+    echo "$MSG"
+  fi
 else
   echo "Zygisk ($ZYGISK_BACKEND): mfr=$MFR from $KB (per-app, Pixel Camera excluded)" > "$LOG"
 fi

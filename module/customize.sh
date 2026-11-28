@@ -8,10 +8,12 @@ set_perm "$MODPATH/service.sh" 0 0 0755
 # Run a module script with the KernelSU BusyBox when it is available, so
 # install-time and boot-time behaviour match across root managers.
 call_script() {
+  _sc="$1"
+  shift
   if [ -x /data/adb/ksu/bin/busybox ]; then
-    /data/adb/ksu/bin/busybox sh "$1" "$2"
+    /data/adb/ksu/bin/busybox sh "$_sc" "$@"
   else
-    sh "$1" "$2"
+    sh "$_sc" "$@"
   fi
 }
 
@@ -148,7 +150,11 @@ esac
 if [ -n "$KB" ]; then
   ui_print "- Found keybox: $KB"
   ui_print "- Preparing RKP manufacturer data..."
-  HOT_OUT=$(call_script "$TARGET_SCRIPT" --hot-apply 2>&1)
+  if [ "$IS_FIRST_INSTALL" = "1" ]; then
+    HOT_OUT=$(call_script "$TARGET_SCRIPT" --hot-apply --first-install 2>&1)
+  else
+    HOT_OUT=$(call_script "$TARGET_SCRIPT" --hot-apply 2>&1)
+  fi
   ui_print "- $HOT_OUT"
 else
   ui_print "- No keybox.xml found yet, import one and reboot"
