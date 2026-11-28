@@ -92,9 +92,9 @@ Easiest first. Details in [docs/roadmap.md](docs/roadmap.md).
 - [x] Hot-install and KernelSU / Next update support
 - [x] Oh My Keymint / TrickyStore / TrickyStore OSS / TEESimulator / TEESimulator-RS detection and keybox discovery
 - [x] English + Simplified Chinese WebUI that follows the system language
+- [x] Report issue button with prefilled fields
 - [ ] Attestation-only test mode
 - [ ] Props health check in WebUI
-- [ ] Report issue button with prefilled fields
 - [ ] Read-only keybox / OMK audit helper
 - [ ] Zygisk Next (ZN) API mode
 - [ ] Keep up with detector changes
