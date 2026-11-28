@@ -93,9 +93,9 @@ WebUI 已完整翻译为英文和简体中文，缺失的字符串会回退到�
 - [x] 热安装以及 KernelSU / Next 更新支持
 - [x] Oh My Keymint / TrickyStore / TrickyStore OSS / TEESimulator / TEESimulator-RS 检测与密钥库发现
 - [x] 跟随系统语言的英文 + 简体中文 WebUI
+- [x] 带预填字段的问题报告按钮
 - [ ] 仅认证测试模式
 - [ ] WebUI 属性健康检查
-- [ ] 带预填字段的问题报告按钮
 - [ ] 只读密钥库 / OMK 审计助手
 - [ ] Zygisk Next（ZN）API 模式
 - [ ] 跟进检测器变化
