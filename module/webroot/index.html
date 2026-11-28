@@ -734,6 +734,10 @@
         <div class="setting-desc" style="margin-bottom: 10px;" data-i18n="apps.desc">
           Only installed apps are shown. Turn on an app to keep its real manufacturer (no spoofing). Changes apply on next app restart (no reboot required).
         </div>
+        <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px;">
+          <button type="button" class="btn-chip primary" id="restartAppsBtn" data-i18n="btn.restartApps" disabled>Force Stop &amp; Clear Cache</button>
+          <span id="restartAppsHint" class="setting-desc" style="margin:0;" data-i18n="apps.restartHint">Change a whitelist toggle to enable.</span>
+        </div>
         <input type="search" id="appSearch" class="search-input" placeholder="Search installed package..." data-i18n-placeholder="apps.search" />
         <div class="filter-row">
           <span id="appCountText" data-i18n="common.loading">Loading installed apps...</span>
@@ -904,6 +908,9 @@
       "btn.exportPublic": "Save to Download",
       "btn.reportIssue": "Report Issue",
       "btn.openGithub": "Open GitHub",
+      "btn.restartApps": "Force Stop & Clear Cache",
+      "btn.restartAppsCount": "Force Stop & Clear Cache ({n})",
+      "apps.restartHint": "Change a whitelist toggle to enable.",
       "btn.saveAnyway": "Save anyway",
       "btn.cancel": "Cancel",
       "export.warn": "The export contains device props, installed module names, package names and the debug log. Files in Download can be read by other apps with storage access.",
@@ -1001,6 +1008,10 @@
       "toast.savedNoReboot": "Saved. No reboot required.",
       "toast.wlSaved": "Saved. Restart app to apply. No reboot required.",
       "toast.wlFailed": "Failed to save whitelist.",
+      "toast.restartingApps": "Force stopping & clearing cache...",
+      "toast.restartedApps": "Force stopped {n} app(s) and cleared cache.",
+      "toast.restartedAppsAuto": "Force stopped {n} app(s), cleared cache, autostarted {a}.",
+      "toast.restartAppsFailed": "Failed to restart selected apps.",
       "toast.rebooting": "Rebooting...",
       "toast.snapshot": "Diagnostic snapshot captured.",
       "toast.exported": "Saved to {path}",
@@ -1037,6 +1048,9 @@
       "btn.exportPublic": "保存到下载目录",
       "btn.reportIssue": "反馈问题",
       "btn.openGithub": "打开 GitHub",
+      "btn.restartApps": "强制停止并清理缓存",
+      "btn.restartAppsCount": "强制停止并清理缓存 ({n})",
+      "apps.restartHint": "修改白名单开关后即可点击。",
       "btn.saveAnyway": "仍然保存",
       "btn.cancel": "取消",
       "export.warn": "导出内容包含设备属性、已安装模块、包名和调试日志。下载目录中的文件可能被具有存储权限的其他应用读取。",
@@ -1134,6 +1148,10 @@
       "toast.savedNoReboot": "已保存，无需重启。",
       "toast.wlSaved": "已保存。重启应用后生效，无需重启设备。",
       "toast.wlFailed": "保存白名单失败。",
+      "toast.restartingApps": "正在强制停止并清理缓存…",
+      "toast.restartedApps": "已强制停止 {n} 个应用并清理缓存。",
+      "toast.restartedAppsAuto": "已强制停止 {n} 个应用、清理缓存，并后台自启 {a} 个。",
+      "toast.restartAppsFailed": "重启所选应用失败。",
       "toast.rebooting": "正在重启…",
       "toast.snapshot": "已抓取诊断快照。",
       "toast.exported": "已保存到 {path}",
@@ -1509,6 +1527,19 @@
     });
   }
 
+  var baselineExcluded = {};
+  var pendingRestartPkgs = {};
+
+  function updateRestartAppsBtn() {
+    var btn = document.getElementById("restartAppsBtn");
+    var hint = document.getElementById("restartAppsHint");
+    if (!btn) return;
+    var count = Object.keys(pendingRestartPkgs).length;
+    btn.disabled = count === 0;
+    btn.textContent = count > 0 ? t("btn.restartAppsCount", { n: count }) : t("btn.restartApps");
+    if (hint) hint.style.display = count > 0 ? "none" : "inline";
+  }
+
   function loadInstalledApps() {
     var container = document.getElementById("whitelistContainer");
     var countEl = document.getElementById("appCountText");
@@ -1526,11 +1557,19 @@
         return { pkg: parts[0] || "", type: parts[1] || "user", excluded: parts[2] === "1" };
       }).filter(function (a) { return a.pkg; });
 
+      for (var bi = 0; bi < installedApps.length; bi++) {
+        var ap = installedApps[bi];
+        if (!Object.prototype.hasOwnProperty.call(baselineExcluded, ap.pkg)) {
+          baselineExcluded[ap.pkg] = ap.excluded;
+        }
+      }
+
       installedApps.sort(function (a, b) {
         if (a.excluded !== b.excluded) return a.excluded ? -1 : 1;
         return a.pkg.localeCompare(b.pkg);
       });
       renderWhitelist();
+      updateRestartAppsBtn();
     });
   }
 
@@ -1697,7 +1736,48 @@
     }
     if (!item) return;
     item.excluded = cb.checked;
+    if (item.excluded !== !!baselineExcluded[pkg]) {
+      pendingRestartPkgs[pkg] = true;
+    } else {
+      delete pendingRestartPkgs[pkg];
+    }
+    updateRestartAppsBtn();
     saveExcludeList();
+  });
+
+  document.getElementById("restartAppsBtn").addEventListener("click", function () {
+    var btn = document.getElementById("restartAppsBtn");
+    var pkgs = Object.keys(pendingRestartPkgs).filter(function (p) {
+      return /^[a-zA-Z0-9._-]+$/.test(p);
+    });
+    if (!pkgs.length) return;
+    btn.disabled = true;
+    showToast(t("toast.restartingApps"));
+    var arg = "--restart-apps " + pkgs.join(" ");
+    return ksuExec(runScriptCmd(arg)).then(function (res) {
+      if (res.errno !== 0) {
+        updateRestartAppsBtn();
+        showToast(t("toast.restartAppsFailed"));
+        return;
+      }
+      for (var i = 0; i < installedApps.length; i++) {
+        if (pendingRestartPkgs[installedApps[i].pkg]) {
+          baselineExcluded[installedApps[i].pkg] = installedApps[i].excluded;
+        }
+      }
+      pendingRestartPkgs = {};
+      updateRestartAppsBtn();
+      var out = String(res.stdout || "");
+      var mStop = out.match(/STOPPED=(\d+)/);
+      var mAuto = out.match(/AUTOSTARTED=(\d+)/);
+      var nStop = mStop ? parseInt(mStop[1], 10) : pkgs.length;
+      var nAuto = mAuto ? parseInt(mAuto[1], 10) : 0;
+      if (nAuto > 0) {
+        showToast(t("toast.restartedAppsAuto", { n: nStop, a: nAuto }));
+      } else {
+        showToast(t("toast.restartedApps", { n: nStop }));
+      }
+    });
   });
 
   var navButtons = document.querySelectorAll(".nav-btn");

@@ -731,7 +731,18 @@ update_module_desc() {
       DESC="🔁 Needs reboot — ${ZYGISK_BACKEND} | RKP: ${MFR}${OWNER_STR}"
     fi
   elif [ "$IS_RKP" -eq 0 ]; then
-    DESC="💤 Standby — Non-RKP keybox, nothing to spoof (${ZYGISK_BACKEND}${OWNER_STR})"
+    IDLE_IDX_FILE="/dev/.rkp_mfr_auto_idle_idx"
+    if [ ! -f "$IDLE_IDX_FILE" ]; then
+      SEED=$(( $(date '+%s' 2>/dev/null || echo 0) + $$ ))
+      printf '%s\n' "$((SEED % 4))" > "$IDLE_IDX_FILE" 2>/dev/null
+    fi
+    IDLE_IDX=$(head -n 1 "$IDLE_IDX_FILE" 2>/dev/null)
+    case "$IDLE_IDX" in
+      1) DESC="☕ Idle — Standard keybox, taking a break (${ZYGISK_BACKEND}${OWNER_STR})" ;;
+      2) DESC="🛡️ All good — Non-RKP keybox, no spoofing needed (${ZYGISK_BACKEND}${OWNER_STR})" ;;
+      3) DESC="🌙 Resting — Non-RKP keybox, nothing to spoof (${ZYGISK_BACKEND}${OWNER_STR})" ;;
+      *) DESC="💤 Standby — Non-RKP keybox, nothing to spoof (${ZYGISK_BACKEND}${OWNER_STR})" ;;
+    esac
   else
     DESC="✅ Active — ${ZYGISK_BACKEND} | RKP: ${MFR}${OWNER_STR} (Pixel Camera excluded)"
   fi
@@ -1111,6 +1122,62 @@ fi
 
 if [ "$1" = "--refresh-desc" ]; then
   update_module_desc
+  exit 0
+fi
+
+if [ "$1" = "--restart-apps" ]; then
+  shift
+  AM_BIN=""
+  if command -v am >/dev/null 2>&1; then
+    AM_BIN="am"
+  elif [ -x /system/bin/am ]; then
+    AM_BIN="/system/bin/am"
+  fi
+  STOPPED=0
+  AUTOSTARTED=0
+  for pkg in "$@"; do
+    case "$pkg" in
+      ""|*[!a-zA-Z0-9._-]*) continue ;;
+    esac
+    if [ -n "$AM_BIN" ]; then
+      "$AM_BIN" force-stop "$pkg" >/dev/null 2>&1
+    fi
+    rm -rf \
+      "/data/user/0/$pkg/cache/"* \
+      "/data/user/0/$pkg/code_cache/"* \
+      "/data/user_de/0/$pkg/cache/"* \
+      "/data/user_de/0/$pkg/code_cache/"* \
+      "/sdcard/Android/data/$pkg/cache/"* 2>/dev/null
+    STOPPED=$((STOPPED + 1))
+
+    # Only autostart apps that are currently whitelisted and allowed to autostart in background
+    IS_WL=0
+    if [ -f "$EXCLUDE_FILE" ] && grep -qxF "$pkg" "$EXCLUDE_FILE" 2>/dev/null; then
+      IS_WL=1
+    fi
+    if [ "$IS_WL" = "1" ] && [ -n "$AM_BIN" ]; then
+      CAN_AUTO=0
+      MIUI_OP=$(appops get "$pkg" 10008 2>/dev/null)
+      case "$MIUI_OP" in
+        *allow*) CAN_AUTO=1 ;;
+        *ignore*|*deny*) CAN_AUTO=0 ;;
+        *)
+          if dumpsys package "$pkg" 2>/dev/null | grep -q 'android.permission.RECEIVE_BOOT_COMPLETED: granted=true'; then
+            BG_OP=$(appops get "$pkg" RUN_IN_BACKGROUND 2>/dev/null)
+            case "$BG_OP" in
+              *ignore*|*deny*) CAN_AUTO=0 ;;
+              *) CAN_AUTO=1 ;;
+            esac
+          fi
+          ;;
+      esac
+      if [ "$CAN_AUTO" = "1" ]; then
+        "$AM_BIN" broadcast -a android.intent.action.BOOT_COMPLETED -p "$pkg" >/dev/null 2>&1 && AUTOSTARTED=$((AUTOSTARTED + 1))
+      fi
+    fi
+    dlog "restart-apps pkg=$pkg wl=$IS_WL autostart=${CAN_AUTO:-0}"
+  done
+  echo "STOPPED=$STOPPED AUTOSTARTED=$AUTOSTARTED"
   exit 0
 fi
 
