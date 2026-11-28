@@ -473,6 +473,73 @@ ks_label_from_dir() {
   echo ""
 }
 
+ks_display_name() {
+  fam="$1"
+  d="$2"
+  prop="$d/module.prop"
+  nm=""
+  au=""
+  uj=""
+  if [ -f "$prop" ]; then
+    nm=$(grep -iE '^name=' "$prop" 2>/dev/null | head -n 1 | cut -d= -f2- | tr -d '\r|;' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+    au=$(grep -iE '^author=' "$prop" 2>/dev/null | head -n 1 | cut -d= -f2- | tr -d '\r|;' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+    uj=$(grep -iE '^updateJson=' "$prop" 2>/dev/null | head -n 1 | cut -d= -f2- | tr -d '\r' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+  fi
+  [ -n "$nm" ] || nm="$fam"
+
+  # Extract GitHub owner from updateJson if present
+  owner=""
+  case "$uj" in
+    *raw.githubusercontent.com/*)
+      owner=$(printf '%s' "$uj" | sed -n 's|.*raw\.githubusercontent\.com/\([^/]*\)/.*|\1|p')
+      ;;
+    *github.com/*)
+      owner=$(printf '%s' "$uj" | sed -n 's|.*github\.com/\([^/]*\)/.*|\1|p')
+      ;;
+  esac
+
+  # Check if owner or trailing author differs from canonical upstream
+  tag=""
+  if [ -n "$owner" ]; then
+    ol=$(printf '%s' "$owner" | tr 'A-Z' 'a-z')
+    is_up=0
+    case "$fam:$ol" in
+      OhMyKeymint:clef-j|OhMyKeymint:jamesclef|OhMyKeymint:ohmykeymint) is_up=1 ;;
+      TrickyStore:5ec1cff|TrickyStore:avmm) is_up=1 ;;
+      TrickyStoreOSS:beakthoven|TrickyStoreOSS:trickystoreoss|TrickyStoreOSS:5ec1cff) is_up=1 ;;
+      TEESimulator:jingmatrix) is_up=1 ;;
+      TEESimulatorRS:jingmatrix|TEESimulatorRS:teesimulator|TEESimulatorRS:engstk) is_up=1 ;;
+    esac
+    [ "$is_up" = "0" ] && tag="$owner"
+  fi
+
+  if [ -z "$tag" ] && [ -n "$au" ]; then
+    # If author is comma/slash-separated (e.g. "James Clef,ITxiao6666"), check the last entry
+    last_au=$(printf '%s' "$au" | awk -F'[,/&]' '{s=$NF; gsub(/^[ \t]+|[ \t]+$/, "", s); print s}')
+    al=$(printf '%s' "$last_au" | tr 'A-Z' 'a-z')
+    is_up=0
+    case "$fam:$al" in
+      OhMyKeymint:"james clef"|OhMyKeymint:jamesclef|OhMyKeymint:clef-j) is_up=1 ;;
+      TrickyStore:5ec1cff|TrickyStore:avmm) is_up=1 ;;
+      TrickyStoreOSS:beakthoven|TrickyStoreOSS:5ec1cff|TrickyStoreOSS:"beakthoven & 5ec1cff") is_up=1 ;;
+      TEESimulator:jingmatrix) is_up=1 ;;
+      TEESimulatorRS:jingmatrix|TEESimulatorRS:engstk) is_up=1 ;;
+    esac
+    [ "$is_up" = "0" ] && [ -n "$last_au" ] && tag="$last_au"
+  fi
+
+  if [ -n "$tag" ]; then
+    nml=$(printf '%s' "$nm" | tr 'A-Z' 'a-z')
+    tgl=$(printf '%s' "$tag" | tr 'A-Z' 'a-z')
+    case "$nml" in
+      *"$tgl"*) echo "$nm" ;;
+      *) echo "$nm ($tag)" ;;
+    esac
+  else
+    echo "$nm"
+  fi
+}
+
 scan_ks_dirs() {
   seen_ids=""
   for base in /data/adb/modules /data/adb/modules_update; do
@@ -486,6 +553,7 @@ scan_ks_dirs() {
       label=$(ks_label_from_dir "$d")
       [ -n "$label" ] || continue
       seen_ids="$seen_ids;$id"
+      disp=$(ks_display_name "$label" "$d")
       en=1
       if [ -f "$d/disable" ] || [ -f "$d/remove" ]; then en=0; fi
       case "$label" in
@@ -493,13 +561,13 @@ scan_ks_dirs() {
         OhMyKeymint) w=4 ;;
         *) w=3 ;;
       esac
-      # entry layout: weight|label|enabled|module_dir
+      # entry layout: weight|family|enabled|module_dir
       KS_ENTRIES="$KS_ENTRIES ${w}|${label}|${en}|${d}"
       if [ "$en" = "1" ]; then
         KS_ENABLED_COUNT=$((KS_ENABLED_COUNT + 1))
-        KS_MODULES="${KS_MODULES}${label}|${id}|enabled;"
+        KS_MODULES="${KS_MODULES}${disp}|${id}|enabled;"
       else
-        KS_MODULES="${KS_MODULES}${label}|${id}|disabled;"
+        KS_MODULES="${KS_MODULES}${disp}|${id}|disabled;"
       fi
     done
   done
@@ -569,17 +637,18 @@ try_keybox() {
 }
 
 discover_module_keyboxes() {
-  label="$1"
-  choose="${2:-1}"
-  case "$label" in
+  fam="$1"
+  owner_disp="$2"
+  choose="${3:-1}"
+  case "$fam" in
     TEESimulator)
       cfg="/data/adb/teesim/config.json"
       if [ -f "$cfg" ]; then
         while IFS= read -r alt; do
           [ -n "$alt" ] || continue
           case "$alt" in
-            /*) try_keybox "$alt" "$label" "$choose" ;;
-            *)  try_keybox "/data/adb/teesim/$alt" "$label" "$choose" ;;
+            /*) try_keybox "$alt" "$owner_disp" "$choose" ;;
+            *)  try_keybox "/data/adb/teesim/$alt" "$owner_disp" "$choose" ;;
           esac
         done <<EOF
 $(teesim_json_values keybox "$cfg")
@@ -591,28 +660,28 @@ EOF
 $(teesim_json_values manufacturer "$cfg")
 EOF
       fi
-      try_keybox "/data/adb/teesim/keybox.xml" "$label" "$choose"
+      try_keybox "/data/adb/teesim/keybox.xml" "$owner_disp" "$choose"
       ;;
     TrickyStore|TrickyStoreOSS|TEESimulatorRS)
-      try_keybox "/data/adb/tricky_store/keybox.xml" "$label" "$choose"
+      try_keybox "/data/adb/tricky_store/keybox.xml" "$owner_disp" "$choose"
       if [ -f /data/adb/tricky_store/target.txt ]; then
         while IFS= read -r alt; do
           [ -n "$alt" ] || continue
           case "$alt" in
-            /*) try_keybox "$alt" "$label" "$choose" ;;
-            *)  try_keybox "/data/adb/tricky_store/$alt" "$label" "$choose" ;;
+            /*) try_keybox "$alt" "$owner_disp" "$choose" ;;
+            *)  try_keybox "/data/adb/tricky_store/$alt" "$owner_disp" "$choose" ;;
           esac
         done <<EOF
 $(awk -F'[][]' '/^[ \t]*\[[^]]+\.xml\][ \t]*$/ {print $2}' /data/adb/tricky_store/target.txt 2>/dev/null)
 EOF
       fi
       for alt in /data/adb/tricky_store/*.xml; do
-        [ -f "$alt" ] && try_keybox "$alt" "$label" "$choose"
+        [ -f "$alt" ] && try_keybox "$alt" "$owner_disp" "$choose"
       done
       ;;
     OhMyKeymint)
-      try_keybox "/data/misc/keystore/omk/keybox.xml" "$label" "$choose"
-      try_keybox "/data/adb/omk/keybox.xml" "$label" "$choose"
+      try_keybox "/data/misc/keystore/omk/keybox.xml" "$owner_disp" "$choose"
+      try_keybox "/data/adb/omk/keybox.xml" "$owner_disp" "$choose"
       ;;
   esac
 }
@@ -630,12 +699,14 @@ for weight in 5 4 3; do
     e_label="${e_rest%%|*}"
     e_rest="${e_rest#*|}"
     e_en="${e_rest%%|*}"
+    e_dir="${e_rest#*|}"
     [ "$e_en" = "1" ] || continue
+    e_disp=$(ks_display_name "$e_label" "$e_dir")
     if [ -z "$KS_PRIMARY" ]; then
-      KS_PRIMARY="$e_label"
-      discover_module_keyboxes "$e_label" 1
+      KS_PRIMARY="$e_disp"
+      discover_module_keyboxes "$e_label" "$e_disp" 1
     else
-      discover_module_keyboxes "$e_label" 0
+      discover_module_keyboxes "$e_label" "$e_disp" 0
     fi
   done
 done
