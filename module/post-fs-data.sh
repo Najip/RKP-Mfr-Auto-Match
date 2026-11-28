@@ -504,11 +504,11 @@ ks_display_name() {
     ol=$(printf '%s' "$owner" | tr 'A-Z' 'a-z')
     is_up=0
     case "$fam:$ol" in
-      OhMyKeymint:clef-j|OhMyKeymint:jamesclef|OhMyKeymint:ohmykeymint) is_up=1 ;;
+      OhMyKeymint:qwq233|OhMyKeymint:clef-j|OhMyKeymint:jamesclef|OhMyKeymint:ohmykeymint) is_up=1 ;;
       TrickyStore:5ec1cff|TrickyStore:avmm) is_up=1 ;;
       TrickyStoreOSS:beakthoven|TrickyStoreOSS:trickystoreoss|TrickyStoreOSS:5ec1cff) is_up=1 ;;
       TEESimulator:jingmatrix) is_up=1 ;;
-      TEESimulatorRS:jingmatrix|TEESimulatorRS:teesimulator|TEESimulatorRS:engstk) is_up=1 ;;
+      TEESimulatorRS:enginex0|TEESimulatorRS:jingmatrix|TEESimulatorRS:teesimulator|TEESimulatorRS:engstk) is_up=1 ;;
     esac
     [ "$is_up" = "0" ] && tag="$owner"
   fi
@@ -519,11 +519,11 @@ ks_display_name() {
     al=$(printf '%s' "$last_au" | tr 'A-Z' 'a-z')
     is_up=0
     case "$fam:$al" in
-      OhMyKeymint:"james clef"|OhMyKeymint:jamesclef|OhMyKeymint:clef-j) is_up=1 ;;
+      OhMyKeymint:"james clef"|OhMyKeymint:jamesclef|OhMyKeymint:clef-j|OhMyKeymint:qwq233) is_up=1 ;;
       TrickyStore:5ec1cff|TrickyStore:avmm) is_up=1 ;;
       TrickyStoreOSS:beakthoven|TrickyStoreOSS:5ec1cff|TrickyStoreOSS:"beakthoven & 5ec1cff") is_up=1 ;;
       TEESimulator:jingmatrix) is_up=1 ;;
-      TEESimulatorRS:jingmatrix|TEESimulatorRS:engstk) is_up=1 ;;
+      TEESimulatorRS:enginex0|TEESimulatorRS:jingmatrix|TEESimulatorRS:engstk) is_up=1 ;;
     esac
     [ "$is_up" = "0" ] && [ -n "$last_au" ] && tag="$last_au"
   fi
