@@ -623,6 +623,75 @@
       color: var(--text-muted);
     }
 
+    .sort-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .sort-select {
+      flex: 1;
+      min-width: 0;
+      padding: 7px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--surface-alt);
+      color: var(--text);
+      font-size: 13px;
+      outline: none;
+    }
+
+    .sort-select:focus {
+      border-color: var(--accent);
+    }
+
+    .sort-dir-btn {
+      -webkit-appearance: none;
+      appearance: none;
+      min-width: 38px;
+      height: 34px;
+      padding: 0 10px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--surface-alt);
+      color: var(--text);
+      font-size: 15px;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    .sort-dir-btn:active {
+      opacity: 0.75;
+    }
+
+    #tab-apps.active {
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 150px);
+      height: calc(100dvh - 150px);
+      min-height: 360px;
+    }
+
+    #tab-apps .card {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+      margin-bottom: 0;
+    }
+
+    #whitelistContainer {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding-right: 2px;
+    }
+
     .switch input:disabled + .slider {
       opacity: 0.55;
       cursor: not-allowed;
@@ -745,6 +814,15 @@
             <span data-i18n="apps.showSystem">Show system apps</span>
             <input type="checkbox" id="showSystemToggle" />
           </label>
+        </div>
+        <div class="sort-row">
+          <select id="appSortKey" class="sort-select" aria-label="Sort apps">
+            <option value="whitelisted" data-i18n="apps.sort.whitelisted">Sort: Whitelisted</option>
+            <option value="name" data-i18n="apps.sort.name">Sort: Name</option>
+            <option value="install" data-i18n="apps.sort.install">Sort: Install time</option>
+            <option value="used" data-i18n="apps.sort.used">Sort: Last used</option>
+          </select>
+          <button type="button" id="appSortDirBtn" class="sort-dir-btn" aria-label="Toggle sort order">↑</button>
         </div>
         <div id="whitelistContainer" class="app-list"></div>
       </div>
@@ -911,6 +989,10 @@
       "btn.restartApps": "Force Stop & Clear Cache",
       "btn.restartAppsCount": "Force Stop & Clear Cache ({n})",
       "apps.restartHint": "Change a whitelist toggle to enable.",
+      "apps.sort.whitelisted": "Sort: Whitelisted",
+      "apps.sort.name": "Sort: Name",
+      "apps.sort.install": "Sort: Install time",
+      "apps.sort.used": "Sort: Last used",
       "btn.saveAnyway": "Save anyway",
       "btn.cancel": "Cancel",
       "export.warn": "The export contains device props, installed module names, package names and the debug log. Files in Download can be read by other apps with storage access.",
@@ -1051,6 +1133,10 @@
       "btn.restartApps": "强制停止并清理缓存",
       "btn.restartAppsCount": "强制停止并清理缓存 ({n})",
       "apps.restartHint": "修改白名单开关后即可点击。",
+      "apps.sort.whitelisted": "排序：白名单优先",
+      "apps.sort.name": "排序：名称",
+      "apps.sort.install": "排序：安装时间",
+      "apps.sort.used": "排序：最近使用",
       "btn.saveAnyway": "仍然保存",
       "btn.cancel": "取消",
       "export.warn": "导出内容包含设备属性、已安装模块、包名和调试日志。下载目录中的文件可能被具有存储权限的其他应用读取。",
@@ -1529,6 +1615,32 @@
 
   var baselineExcluded = {};
   var pendingRestartPkgs = {};
+  var appSortKey = "whitelisted";
+  var appSortAsc = true;
+
+  function sortAppItems(list) {
+    var dir = appSortAsc ? 1 : -1;
+    return list.slice().sort(function (a, b) {
+      if (appSortKey === "whitelisted") {
+        if (a.excluded !== b.excluded) return (a.excluded ? -1 : 1) * dir;
+        return a.pkg.localeCompare(b.pkg) * dir;
+      }
+      if (appSortKey === "install") {
+        if (a.installTs !== b.installTs) return (a.installTs - b.installTs) * dir;
+        return a.pkg.localeCompare(b.pkg);
+      }
+      if (appSortKey === "used") {
+        if (a.usedTs !== b.usedTs) return (a.usedTs - b.usedTs) * dir;
+        return a.pkg.localeCompare(b.pkg);
+      }
+      return a.pkg.localeCompare(b.pkg) * dir;
+    });
+  }
+
+  function updateSortDirBtn() {
+    var btn = document.getElementById("appSortDirBtn");
+    if (btn) btn.textContent = appSortAsc ? "↑" : "↓";
+  }
 
   function updateRestartAppsBtn() {
     var btn = document.getElementById("restartAppsBtn");
@@ -1554,7 +1666,13 @@
       appsLoaded = true;
       installedApps = res.stdout.split("\n").filter(Boolean).map(function (line) {
         var parts = line.split("|");
-        return { pkg: parts[0] || "", type: parts[1] || "user", excluded: parts[2] === "1" };
+        return {
+          pkg: parts[0] || "",
+          type: parts[1] || "user",
+          excluded: parts[2] === "1",
+          installTs: parseInt(parts[3] || "0", 10) || 0,
+          usedTs: parseInt(parts[4] || "0", 10) || 0
+        };
       }).filter(function (a) { return a.pkg; });
 
       for (var bi = 0; bi < installedApps.length; bi++) {
@@ -1564,10 +1682,6 @@
         }
       }
 
-      installedApps.sort(function (a, b) {
-        if (a.excluded !== b.excluded) return a.excluded ? -1 : 1;
-        return a.pkg.localeCompare(b.pkg);
-      });
       renderWhitelist();
       updateRestartAppsBtn();
     });
@@ -1577,9 +1691,9 @@
     var container = document.getElementById("whitelistContainer");
     var countEl = document.getElementById("appCountText");
     var q = (document.getElementById("appSearch").value || "").trim().toLowerCase();
-    var filtered = installedApps.filter(function (a) {
+    var filtered = sortAppItems(installedApps.filter(function (a) {
       return !q || a.pkg.toLowerCase().indexOf(q) >= 0;
-    });
+    }));
 
     var excludedCount = 0;
     for (var i = 0; i < installedApps.length; i++) {
@@ -1726,6 +1840,17 @@
 
   document.getElementById("appSearch").addEventListener("input", renderWhitelist);
   document.getElementById("showSystemToggle").addEventListener("change", function () { loadInstalledApps(); });
+  document.getElementById("appSortKey").addEventListener("change", function (e) {
+    appSortKey = e.target.value || "whitelisted";
+    appSortAsc = (appSortKey === "whitelisted" || appSortKey === "name");
+    updateSortDirBtn();
+    renderWhitelist();
+  });
+  document.getElementById("appSortDirBtn").addEventListener("click", function () {
+    appSortAsc = !appSortAsc;
+    updateSortDirBtn();
+    renderWhitelist();
+  });
   document.getElementById("whitelistContainer").addEventListener("change", function (e) {
     var cb = e.target.closest(".wl-toggle");
     if (!cb || cb.disabled) return;

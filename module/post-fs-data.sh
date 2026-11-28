@@ -1074,6 +1074,8 @@ if [ "$1" = "--list-apps" ]; then
   fi
   {
     printf '%s\n' "$USER_RAW" | sed -n 's/^package:/U|/p'
+    stat -c 'I|%Y|%n' /data/user/0/* 2>/dev/null
+    stat -c 'L|%Y|%n' /data/user/0/*/cache /data/user/0/*/code_cache /data/user/0/*/shared_prefs /data/user/0/*/databases 2>/dev/null
     printf '%s\n' "$ALL_RAW" | sed -n 's/^package:/A|/p' | sort -u
   } | awk -F'|' -v show_all="$SHOW_ALL" -v efile="$EXCLUDE_FILE" -v cfile="$CAM_AUTO_FILE" '
     BEGIN {
@@ -1099,6 +1101,21 @@ if [ "$1" = "--list-apps" ]; then
       if ($2 != "") is_user[$2] = 1
       next
     }
+    $1 == "I" {
+      ts = $2 + 0
+      p = $3
+      sub(/^\/data\/user\/0\//, "", p)
+      if (p != "" && ts > inst_ts[p] + 0) inst_ts[p] = ts
+      next
+    }
+    $1 == "L" {
+      ts = $2 + 0
+      p = $3
+      sub(/^\/data\/user\/0\//, "", p)
+      sub(/\/.*$/, "", p)
+      if (p != "" && ts > used_ts[p] + 0) used_ts[p] = ts
+      next
+    }
     $1 == "A" {
       p = $2
       gsub(/\r/, "", p)
@@ -1107,7 +1124,9 @@ if [ "$1" = "--list-apps" ]; then
       u = (p in is_user) ? 1 : 0
       e = (p in is_excl) ? 1 : 0
       if (show_all || u || e) {
-        printf "%s|%s|%d\n", p, (u ? "user" : "sys"), e
+        it = (p in inst_ts) ? inst_ts[p] : 0
+        ut = (p in used_ts) ? used_ts[p] : it
+        printf "%s|%s|%d|%d|%d\n", p, (u ? "user" : "sys"), e, it, ut
       }
     }
   '
